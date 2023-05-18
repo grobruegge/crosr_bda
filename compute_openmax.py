@@ -9,6 +9,7 @@ from tqdm import tqdm
 import pickle
 import os
 from sklearn.metrics import roc_auc_score
+from matplotlib import pyplot as plt
 
 def compute_activation_vector(model, dataloader, device, mode="train"):
 
@@ -32,7 +33,7 @@ def compute_activation_vector(model, dataloader, device, mode="train"):
         for i, predicted_class in enumerate(predicted_classes):
 
             # Only use the Avtivation Vectors of correctly classified samples
-            if predicted_class == labels[i]:
+            if predicted_class == labels[i] or mode != "train":
                 
                 squeezed_latent = []
                 # append the logits to the AV
@@ -134,7 +135,7 @@ def compute_openmax(mrs, mavs, avs, alpharank=10):
                 # Weibull distribution of the respective class
                 w_score = mrs[c].w_score(spd.euclidean(mavs[c], av))
                 # modify the entry in the AV accordingly
-                modified_unit = av[idx] * ( 1 - w_score*ranked_alpha[idx])
+                modified_unit = av[idx] * ( 1 - w_score * ranked_alpha[idx])
                 openmax_known.append(modified_unit)
                 openmax_unknown += (av[idx] - modified_unit)
 
@@ -286,8 +287,18 @@ if __name__ == "__main__":
 
     # first compute for the test images (here we expect the scores to be close to 0, because no outliers)
     in_dist_scores = compute_openmax(mrs, mavs, avs_test)
+
     # then compute for the outlying images (here we expect the scores to be close to 1, because no outliers)
     open_set_scores = compute_openmax(mrs, mavs, avs_outlier)
+    
+    # Create a scatterplot to plot the outlying probability for test and outlying images
+    fig, ax = plt.subplots(figsize=(30, 15))
+    ax.scatter(range(len(in_dist_scores)), in_dist_scores, color='blue', label='in_dist_scores')
+    ax.scatter(range(len(in_dist_scores), len(in_dist_scores)+len(open_set_scores)), open_set_scores, color='red', label='open_set_scores')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('Value')
+    ax.legend()
+    plt.savefig("img.png")  
 
     # based on these assumptions, we can compute the AUROC
     print("The AUROC is ",calc_auroc(in_dist_scores, open_set_scores))
