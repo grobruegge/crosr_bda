@@ -10,7 +10,7 @@ import pickle
 import os
 from sklearn.metrics import roc_auc_score
 
-def compute_activation_vector(model, dataloader, device):
+def compute_activation_vector(model, dataloader, device, mode="train"):
 
 
     # initialize a dictionary to store the activation vectors (AV) for each class
@@ -50,7 +50,7 @@ def compute_activation_vector(model, dataloader, device):
                 avs[labels[i]].append(activation_vector)
 
     # save all the acticvation vectors as pickle file
-    with open('avs.pickle', 'wb') as f:
+    with open(f'avs_{mode}.pickle', 'wb') as f:
         pickle.dump(avs, f)
 
     return avs
@@ -151,7 +151,7 @@ def calc_auroc(id_test_results, ood_test_results):
     scores = np.concatenate((id_test_results, ood_test_results))
     
     # this is what we would expect (see main function for explaination)
-    trues = np.array(([1] * len(id_test_results)) + ([0] * len(ood_test_results)))
+    trues = np.array(([0] * len(id_test_results)) + ([1] * len(ood_test_results)))
 
     # calculate AUROC
     result = roc_auc_score(trues, scores)
@@ -196,17 +196,17 @@ if __name__ == "__main__":
     )
 
     # Check if the JSON file exists in the current directory
-    if os.path.isfile('./mavs.pickle') and os.path.isfile('./avs.pickle'):
+    if os.path.isfile('./mavs.pickle') and os.path.isfile('./avs_train.pickle'):
         # Load the JSON file as a dictionary
         with open('mavs.pickle', 'rb') as f:
             mavs = pickle.load(f)
-        with open('avs.pickle', 'rb') as f:
+        with open('avs_train.pickle', 'rb') as f:
             avs_train = pickle.load(f)
         print(f"Loaded (Mean) Activation Vectors for each class")
     else:
         print("File 'mavs.pickle' and/or 'avs_train.pickle' does not exist in the current directory. Computing...")
         # Compute the activation vectors for all images in the train dataset
-        avs_train = compute_activation_vector(model, trainloader, DEVICE)
+        avs_train = compute_activation_vector(model, trainloader, DEVICE, mode="train")
         # Compute the mean activation vector for all classes
         mavs = compute_mean_activation_vector(avs_train)
 
@@ -242,8 +242,14 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    # compute the AV for the test images
-    avs_test = compute_activation_vector(model, testloader, DEVICE)
+    if os.path.isfile('./avs_test.pickle'):
+        with open('avs_test.pickle', 'rb') as f:
+            avs_test = pickle.load(f)
+        print(f"loaded activation vectors for test data")
+    else: 
+        print("File 'avs_test.pickle' does not exist in the current directory. Computing...")
+        # compute the AV for the test images
+        avs_test = compute_activation_vector(model, testloader, DEVICE, mode="test")
 
     # these transformation are only used for outlying datapoints and make sure they follow 
     # some basic constraints such as size (32x32) and have 3 channels
@@ -255,7 +261,7 @@ if __name__ == "__main__":
     ])
     
     # load IMAGENET as outlying dataset from folder
-    # download the dataset from "" and put it into ./data/Imagenet 
+    # download the dataset from "https://www.dropbox.com/s/avgm2u562itwpkl/Imagenet.tar.gz" and put it into ./data/Imagenet 
     outlierset = datasets.ImageFolder(
         root=os.path.join('data', 'Imagenet'), 
         transform=transform_outlier
