@@ -13,7 +13,6 @@ from matplotlib import pyplot as plt
 
 def compute_activation_vector(model, dataloader, device, mode="train"):
 
-
     # initialize a dictionary to store the activation vectors (AV) for each class
     avs = {i: [] for i in range(model.num_classes)}
     correct_predictions = 0
@@ -68,38 +67,27 @@ def compute_activation_vector(model, dataloader, device, mode="train"):
 
     return avs
 
-def compute_mean_activation_vector(avs):
+def compute_mean_activation_vector(avs, num_classes):
 
     # dictionary that contains the mean actication vectors for each class
-    mavs = {i: None for i in range(len(avs))} 
+    mavs = {i: None for i in range(num_classes)} 
 
-    # sum up the activation vectors (AV) for each class
-    for c, class_avs in avs.items():
-        if len(class_avs) > 0:
-            mavs[c] = np.mean(class_avs, axis=0)
-    
-    # divide through the total amount of AV for each class to get the mean
-    for c in range(model.num_classes):
-        mavs[c] /= len(avs[c]) 
-    
-    # save the MAV as file
-    with open('mavs.pickle', 'wb') as f:
-        pickle.dump(mavs, f)
+    for c in range(num_classes):
+        # sum up the activation vectors (AV) for each class
+        mavs[c] = np.mean(avs[c], axis=0)
+        # divide through the total amount of AV for each class to get the mean
+        mavs[c] /= len(avs[c])    
 
     return mavs
 
-def compute_distances(mavs, avs):
+def compute_distances(mavs, avs, num_classes):
     # dictionary that stores the eucledean distance between the activation vectors and the mean of all classes
-    distances = {i: [] for i in range(len(mavs))} 
+    distances = {i: [] for i in range(num_classes)} 
 
     # compute distance of all AV the their respective MAV
     for c, mav in mavs.items():
         for av in avs[c]:
             distances[c].append(spd.euclidean(mav, av))
-
-    # save the distances as file
-    with open('distances.pickle', 'wb') as f:
-        pickle.dump(mavs, f)
 
     return distances
 
@@ -115,36 +103,30 @@ def fit_weibull_distribution(distances, tail_size):
             tail_size
         )
 
-    # save the MRS for each class as file 
-    with open('mrs.pickle', 'wb') as f:
-        pickle.dump(mrs, f)
-
     return mrs
 
-def compute_openmax(mrs, mavs, avs, alpharank=10):
+def compute_openmax(mrs, mavs, avs, num_classes, alpharank=10):
     
     openmax_probs = []
-
     alpha_weights = [((alpharank+1) - i)/float(alpharank) for i in range(1, alpharank+1)]
 
     for c, class_avs in avs.items():
-        
+
         for av in class_avs:
             
             openmax_known = []
             openmax_unknown = 0
 
-            ranked_list = av.argsort().ravel()
+            ranked_list = av[:num_classes].argsort().ravel()
 
-            ranked_alpha = np.zeros(av.shape[0])
+            ranked_alpha = np.zeros(num_classes)
             for i in range(len(alpha_weights)):
                 ranked_alpha[ranked_list[i]] = alpha_weights[i]
 
-            for idx in range(len(av)):
-                
+            for idx in range(num_classes):
                 # get the w-score by inserting the distance of the AV and the MAV into the 
                 # Weibull distribution of the respective class
-                w_score = mrs[c].w_score(spd.euclidean(mavs[c], av))
+                w_score = mrs[idx].w_score(spd.euclidean(mavs[idx], av))
                 # modify the entry in the AV accordingly
                 modified_unit = av[idx] * ( 1 - w_score * ranked_alpha[idx])
                 openmax_known.append(modified_unit)
@@ -183,7 +165,7 @@ if __name__ == "__main__":
     BATCHSIZE = 1
     MEANS = [0.4914, 0.4822, 0.4465]
     STDS = [0.2023, 0.1994, 0.2010]
-    TAIL_SIZE_WD = 20
+    TAIL_SIZE_WD = 100
 
     # Initialize Deep Hierarchical Network from weights
     model = DHRNet(NUM_CLASSES) # Initialize DHR Net from pre-defined architecture
@@ -213,37 +195,24 @@ if __name__ == "__main__":
     )
 
     # Check if the JSON file exists in the current directory
-    if os.path.isfile('./mavs.pickle') and os.path.isfile('./avs_train.pickle'):
+    if os.path.isfile('./avs_train.pickle'):
         # Load the JSON file as a dictionary
-        with open('mavs.pickle', 'rb') as f:
-            mavs = pickle.load(f)
         with open('avs_train.pickle', 'rb') as f:
             avs_train = pickle.load(f)
-        print(f"Loaded (Mean) Activation Vectors for each class")
+        print(f"Loaded Activation Vectors for each class")
     else:
-        print("File 'mavs.pickle' and/or 'avs_train.pickle' does not exist in the current directory. Computing...")
+        print("File 'avs_train.pickle' does not exist in the current directory. Computing...")
         # Compute the activation vectors for all images in the train dataset
         avs_train = compute_activation_vector(model, trainloader, DEVICE, mode="train")
-        # Compute the mean activation vector for all classes
-        mavs = compute_mean_activation_vector(avs_train)
+    
+    # Compute the mean activation vector for all classes
+    mavs = compute_mean_activation_vector(avs_train, NUM_CLASSES)
 
-    if os.path.isfile('./distances.pickle'):
-        with open('distances.pickle', 'rb') as f:
-            distances = pickle.load(f)
-        print(f"Loaded Distances to Mean Activation Vectors for each class")
-    else: 
-        print("File 'distances.pickle' does not exist in the current directory. Computing...")
-        # Compute distance of all AV the their respective MAV
-        distances = compute_distances(mavs, avs_train)
+    # Compute distance of all AV the their respective MAV
+    distances = compute_distances(mavs, avs_train, NUM_CLASSES)
 
-    if os.path.isfile('./mrs.pickle'):
-        with open('mrs.pickle', 'rb') as f:
-            mrs = pickle.load(f)
-        print(f"Loaded Weibull Distribution (Meta Recognition System) for each class")
-    else: 
-        print("File 'mrs.pickle' does not exist in the current directory. Computing...")
-        # fit the weibull distribution (called meta-recognition system, MRS) for every class
-        mrs = fit_weibull_distribution(distances, TAIL_SIZE_WD)
+    # fit the weibull distribution (called meta-recognition system, MRS) for every class
+    mrs = fit_weibull_distribution(distances, TAIL_SIZE_WD)
 
     # load CIFAR-10 test dataset and create dataloader
     testset = datasets.CIFAR10(
@@ -303,11 +272,11 @@ if __name__ == "__main__":
 
     # first compute the openmax scores for the test images (for CIPHAR-10 SHAPE=[10000, 11])
     # here we expect the last entry (outlying class score) to be close to 0, because no outliers
-    in_dist_openmax_scores = compute_openmax(mrs, mavs, avs_test)
+    in_dist_openmax_scores = compute_openmax(mrs, mavs, avs_test, NUM_CLASSES)
 
     # then compute the openmax scores for the outlying images (for CIPHAR-10 SHAPE=[10000, 11])
     # here we expect the last entry (outlying class score) to be close to 1, because this are outliers
-    open_set_openmax_scores = compute_openmax(mrs, mavs, avs_outlier)
+    open_set_openmax_scores = compute_openmax(mrs, mavs, avs_outlier, NUM_CLASSES)
     
     # Create a scatterplot to plot the outlying probability for test and outlying images
     fig, ax = plt.subplots(nrows = 11, ncols = 1, figsize=(30, 165))
@@ -323,7 +292,7 @@ if __name__ == "__main__":
         ax[c].tick_params(axis='y', labelsize=17)
         ax[c].tick_params(axis='x', labelsize=17)
     plt.tight_layout()
-    plt.savefig("img.png")  
+    plt.savefig("openmax_scores.png")  
 
     # based on these assumptions, we can compute the AUROC using ONLY the outlying class score
     print("The AUROC is ",calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
