@@ -16,9 +16,14 @@ def compute_activation_vector(model, dataloader, device, mode="train"):
 
     # initialize a dictionary to store the activation vectors (AV) for each class
     avs = {i: [] for i in range(model.num_classes)}
+    correct_predictions = 0
+    current_total = 0
+
+    # initialize tqdm progress bar for dynamic printing
+    pbar = tqdm(total=len(dataloader), desc="")
 
     # Iterate through batches of the dataset
-    for (inputs, labels) in tqdm(dataloader):
+    for (inputs, labels) in dataloader:
         
         inputs, labels = inputs.to(device), np.array(labels.cpu())
 
@@ -28,6 +33,13 @@ def compute_activation_vector(model, dataloader, device, mode="train"):
 
         # determine predicted class based on the max value of the logits (of site num_classes)
         predicted_classes = torch.argmax(logits, dim=1)
+
+        # used to calculate the accuracy
+        correct_predictions += (predicted_classes.numpy() == labels).sum()
+        current_total += labels.shape[0]
+        # print acc to console
+        tqdm.set_description(pbar, f"Current Accuracy: {correct_predictions / current_total * 100:.2f}% ")
+        pbar.update(labels.shape[0])
 
         # iterate through each image the batch 
         for i, predicted_class in enumerate(predicted_classes):
@@ -111,10 +123,9 @@ def fit_weibull_distribution(distances, tail_size):
 
 def compute_openmax(mrs, mavs, avs, alpharank=10):
     
-    results = []
+    openmax_probs = []
 
     alpha_weights = [((alpharank+1) - i)/float(alpharank) for i in range(1, alpharank+1)]
-
 
     for c, class_avs in avs.items():
         
@@ -139,12 +150,17 @@ def compute_openmax(mrs, mavs, avs, alpharank=10):
                 openmax_known.append(modified_unit)
                 openmax_unknown += (av[idx] - modified_unit)
 
-                # calculate the probability of this AV being unknown
-                prob_unknowns = np.exp(openmax_unknown)/(np.sum(np.exp(np.asarray(openmax_known))) + np.exp(openmax_unknown))
+            # put the recalibrated logits in one array of shape [num_classes + 1]
+            recalibrated_logits = np.append(np.asarray(openmax_known), openmax_unknown)
+            # apply softmax on the recalibrated logits to get the openmax probabilities 
+            openmax_prob = np.exp(recalibrated_logits) / np.sum(np.exp(recalibrated_logits))
 
-            results.append(prob_unknowns)
+            # calculate the probability of this AV being unknown
+            # prob_unknowns = np.exp(openmax_unknown)/(np.sum(np.exp(np.asarray(openmax_known))) + np.exp(openmax_unknown))
 
-    return results
+            openmax_probs.append(openmax_prob)
+
+    return openmax_probs
 
 def calc_auroc(id_test_results, ood_test_results):
     
@@ -285,20 +301,29 @@ if __name__ == "__main__":
     # This function recalibrates the SoftMax scores and adds an editional unit for unkown probability and thus computes OpenMax 
     # it returns the outlier probabilities (thus the additional class added by OpenMax) for each of the images
 
-    # first compute for the test images (here we expect the scores to be close to 0, because no outliers)
-    in_dist_scores = compute_openmax(mrs, mavs, avs_test)
+    # first compute the openmax scores for the test images (for CIPHAR-10 SHAPE=[10000, 11])
+    # here we expect the last entry (outlying class score) to be close to 0, because no outliers
+    in_dist_openmax_scores = compute_openmax(mrs, mavs, avs_test)
 
-    # then compute for the outlying images (here we expect the scores to be close to 1, because no outliers)
-    open_set_scores = compute_openmax(mrs, mavs, avs_outlier)
+    # then compute the openmax scores for the outlying images (for CIPHAR-10 SHAPE=[10000, 11])
+    # here we expect the last entry (outlying class score) to be close to 1, because this are outliers
+    open_set_openmax_scores = compute_openmax(mrs, mavs, avs_outlier)
     
     # Create a scatterplot to plot the outlying probability for test and outlying images
-    fig, ax = plt.subplots(figsize=(30, 15))
-    ax.scatter(range(len(in_dist_scores)), in_dist_scores, color='blue', label='in_dist_scores')
-    ax.scatter(range(len(in_dist_scores), len(in_dist_scores)+len(open_set_scores)), open_set_scores, color='red', label='open_set_scores')
-    ax.set_xlabel('Index')
-    ax.set_ylabel('Value')
-    ax.legend()
+    fig, ax = plt.subplots(nrows = 11, ncols = 1, figsize=(30, 165))
+    for c in range(0, 11):
+        in_dist_om_class = [om[c] for om in in_dist_openmax_scores]
+        open_set_om_class = [om[c] for om in open_set_openmax_scores]
+        ax[c].scatter(range(len(in_dist_om_class)), in_dist_om_class, color='blue', label='in_dist_scores')
+        ax[c].scatter(range(len(in_dist_om_class), len(in_dist_om_class)+len(open_set_om_class)), open_set_om_class, color='red', label='open_set_scores')
+        ax[c].set_xlabel('Index', fontsize=20)
+        ax[c].set_ylabel('Value', fontsize=20)
+        ax[c].legend(fontsize=20)
+        ax[c].set_title(f'OpenMax Scores of Class {c}', fontsize=25)
+        ax[c].tick_params(axis='y', labelsize=17)
+        ax[c].tick_params(axis='x', labelsize=17)
+    plt.tight_layout()
     plt.savefig("img.png")  
 
-    # based on these assumptions, we can compute the AUROC
-    print("The AUROC is ",calc_auroc(in_dist_scores, open_set_scores))
+    # based on these assumptions, we can compute the AUROC using ONLY the outlying class score
+    print("The AUROC is ",calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
