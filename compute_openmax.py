@@ -192,9 +192,9 @@ if __name__ == "__main__":
     )
 
     # Check if the JSON file exists in the current directory
-    if os.path.isfile('./avs_train_without_latent.pickle'):
+    if os.path.isfile('./avs_train.pickle'):
         # Load the JSON file as a dictionary
-        with open('avs_train_without_latent.pickle', 'rb') as f:
+        with open('avs_train.pickle', 'rb') as f:
             avs_train = pickle.load(f)
         print(f"Loaded Activation Vectors for each class")
     else:
@@ -225,8 +225,8 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    if os.path.isfile('./avs_test_without_latent.pickle'):
-        with open('avs_test_without_latent.pickle', 'rb') as f:
+    if os.path.isfile('./avs_test.pickle'):
+        with open('avs_test.pickle', 'rb') as f:
             avs_test = pickle.load(f)
         print(f"loaded activation vectors for test data")
     else: 
@@ -256,8 +256,8 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    if os.path.isfile('./avs_outlier_without_latent.pickle'):
-        with open('avs_outlier_without_latent.pickle', 'rb') as f:
+    if os.path.isfile('./avs_outlier.pickle'):
+        with open('avs_outlier.pickle', 'rb') as f:
             avs_outlier = pickle.load(f)
         print(f"loaded activation vectors for outlying data")
     else: 
@@ -289,7 +289,7 @@ if __name__ == "__main__":
         ax[c].tick_params(axis='y', labelsize=17)
         ax[c].tick_params(axis='x', labelsize=17)
     plt.tight_layout()
-    plt.savefig("openmax_scores_without_latent.png")  
+    plt.savefig("openmax_scores.png")  
 
     # based on these assumptions, we can compute the AUROC using ONLY the outlying class score
     print("The AUROC is ",calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
