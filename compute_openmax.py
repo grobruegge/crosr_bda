@@ -74,9 +74,7 @@ def compute_mean_activation_vector(avs, num_classes):
 
     for c in range(num_classes):
         # sum up the activation vectors (AV) for each class
-        mavs[c] = np.mean(avs[c], axis=0)
-        # divide through the total amount of AV for each class to get the mean
-        mavs[c] /= len(avs[c])    
+        mavs[c] = np.mean(avs[c], axis=0)   
 
     return mavs
 
@@ -88,13 +86,13 @@ def compute_distances(mavs, avs, num_classes):
     for c, mav in mavs.items():
         for av in avs[c]:
             distances[c].append(spd.euclidean(mav, av))
-
+            
     return distances
 
-def fit_weibull_distribution(distances, tail_size):
+def fit_weibull_distribution(distances, tail_size, num_classes):
 
     # dictionary that contains the so-called "meta-recognition system" (MRS) for each class
-    mrs = {i: libmr.MR() for i in range(len(distances))} 
+    mrs = {i: libmr.MR() for i in range(num_classes)} 
 
     # use the fit_high() function to fit the weibull distribution for each class
     for c, class_distances in distances.items():
@@ -118,7 +116,6 @@ def compute_openmax(mrs, mavs, avs, num_classes, alpharank=10):
             openmax_unknown = 0
 
             ranked_list = av[:num_classes].argsort().ravel()
-
             ranked_alpha = np.zeros(num_classes)
             for i in range(len(alpha_weights)):
                 ranked_alpha[ranked_list[i]] = alpha_weights[i]
@@ -195,9 +192,9 @@ if __name__ == "__main__":
     )
 
     # Check if the JSON file exists in the current directory
-    if os.path.isfile('./avs_train.pickle'):
+    if os.path.isfile('./avs_train_without_latent.pickle'):
         # Load the JSON file as a dictionary
-        with open('avs_train.pickle', 'rb') as f:
+        with open('avs_train_without_latent.pickle', 'rb') as f:
             avs_train = pickle.load(f)
         print(f"Loaded Activation Vectors for each class")
     else:
@@ -212,7 +209,7 @@ if __name__ == "__main__":
     distances = compute_distances(mavs, avs_train, NUM_CLASSES)
 
     # fit the weibull distribution (called meta-recognition system, MRS) for every class
-    mrs = fit_weibull_distribution(distances, TAIL_SIZE_WD)
+    mrs = fit_weibull_distribution(distances, TAIL_SIZE_WD, NUM_CLASSES)
 
     # load CIFAR-10 test dataset and create dataloader
     testset = datasets.CIFAR10(
@@ -228,8 +225,8 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    if os.path.isfile('./avs_test.pickle'):
-        with open('avs_test.pickle', 'rb') as f:
+    if os.path.isfile('./avs_test_without_latent.pickle'):
+        with open('avs_test_without_latent.pickle', 'rb') as f:
             avs_test = pickle.load(f)
         print(f"loaded activation vectors for test data")
     else: 
@@ -259,8 +256,8 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    if os.path.isfile('./avs_outlier.pickle'):
-        with open('avs_outlier.pickle', 'rb') as f:
+    if os.path.isfile('./avs_outlier_without_latent.pickle'):
+        with open('avs_outlier_without_latent.pickle', 'rb') as f:
             avs_outlier = pickle.load(f)
         print(f"loaded activation vectors for outlying data")
     else: 
@@ -292,7 +289,7 @@ if __name__ == "__main__":
         ax[c].tick_params(axis='y', labelsize=17)
         ax[c].tick_params(axis='x', labelsize=17)
     plt.tight_layout()
-    plt.savefig("openmax_scores.png")  
+    plt.savefig("openmax_scores_without_latent.png")  
 
     # based on these assumptions, we can compute the AUROC using ONLY the outlying class score
     print("The AUROC is ",calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
