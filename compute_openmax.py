@@ -79,6 +79,7 @@ def compute_mean_activation_vector(avs, num_classes):
     return mavs
 
 def compute_distances(mavs, avs, num_classes):
+
     # dictionary that stores the eucledean distance between the activation vectors and the mean of all classes
     distances = {i: [] for i in range(num_classes)} 
 
@@ -96,6 +97,7 @@ def fit_weibull_distribution(distances, tail_size, num_classes):
 
     # use the fit_high() function to fit the weibull distribution for each class
     for c, class_distances in distances.items():
+
         mrs[c].fit_high(
             sorted(class_distances)[-tail_size:],
             tail_size
@@ -103,39 +105,51 @@ def fit_weibull_distribution(distances, tail_size, num_classes):
 
     return mrs
 
-def compute_openmax(mrs, mavs, avs, num_classes, alpharank=10):
+def compute_openmax(mrs, mavs, avs, num_classes, alpharank=10, apply_softmax=True):
     
     openmax_probs = []
     alpha_weights = [((alpharank+1) - i)/float(alpharank) for i in range(1, alpharank+1)]
-
+    
     for c, class_avs in avs.items():
-
+        
         for av in class_avs:
             
+            logits = av[:num_classes]
             openmax_known = []
             openmax_unknown = 0
 
-            ranked_list = av[:num_classes].argsort().ravel()
+            ranked_list = np.argsort(av[:num_classes])[::-1]
             ranked_alpha = np.zeros(num_classes)
-            for i in range(len(alpha_weights)):
+            for i in range(alpharank):
                 ranked_alpha[ranked_list[i]] = alpha_weights[i]
 
+            # There are two option to calculate the OpenMax Scores:
+            # 1) Use the logits to multiply with w-scores: This has the disadvantage that when calculating 
+            # the outlying class score, you sum over pos. and neg. values which may cancel out
+            # 2) Use the Softmax of logits to multiply with w-scores: It seems that this has been adapted by the
+            # paper CROSR and IMHO it makes more sense
+            w_scores = []
             for idx in range(num_classes):
                 # get the w-score by inserting the distance of the AV and the MAV into the 
                 # Weibull distribution of the respective class
                 w_score = mrs[idx].w_score(spd.euclidean(mavs[idx], av))
-                # modify the entry in the AV accordingly
-                modified_unit = av[idx] * ( 1 - w_score * ranked_alpha[idx])
-                openmax_known.append(modified_unit)
-                openmax_unknown += (av[idx] - modified_unit)
+                w_scores.append(w_score)
 
-            # put the recalibrated logits in one array of shape [num_classes + 1]
-            recalibrated_logits = np.append(np.asarray(openmax_known), openmax_unknown)
-            # apply softmax on the recalibrated logits to get the openmax probabilities 
-            openmax_prob = np.exp(recalibrated_logits) / np.sum(np.exp(recalibrated_logits))
+            if apply_softmax:
+                # Apply Softmax on the logits
+                logits = np.exp(logits) / np.sum(np.exp(logits))
 
-            # calculate the probability of this AV being unknown
-            # prob_unknowns = np.exp(openmax_unknown)/(np.sum(np.exp(np.asarray(openmax_known))) + np.exp(openmax_unknown))
+            # a vector of shape (num_classes,) with the probability of the point being an outlier
+            # with respect to each class
+            outlying_prob = np.asarray(w_scores) * ranked_alpha
+            # modify the entry in the logits accordingly
+            openmax_known = logits * (1 - outlying_prob)
+            # append the outlying class probabilities as everyting that has been "taken away"
+            openmax_prob = np.append(openmax_known, np.sum(logits * outlying_prob))
+
+            if not apply_softmax:
+                # apply softmax on the recalibrated logits to get the openmax probabilities 
+                openmax_prob = np.exp(openmax_prob) / np.sum(np.exp(openmax_prob))
 
             openmax_probs.append(openmax_prob)
 
