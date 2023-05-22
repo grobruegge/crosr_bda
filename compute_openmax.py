@@ -1,5 +1,5 @@
 import torch
-from torch.nn import AdaptiveAvgPool2d
+from torch.nn import AdaptiveAvgPool2d, AdaptiveMaxPool2d
 from train_dhr_nn import DHRNet
 from torchvision import datasets, transforms
 import libmr
@@ -11,7 +11,7 @@ import os
 from sklearn.metrics import roc_auc_score
 from matplotlib import pyplot as plt
 
-def compute_activation_vector(model, dataloader, device, mode="train"):
+def compute_activation_vector(model, dataloader, device, pooling=AdaptiveMaxPool2d((1,1)), mode="train"):
 
     # initialize a dictionary to store the activation vectors (AV) for each class
     avs = {i: [] for i in range(model.num_classes)}
@@ -51,18 +51,16 @@ def compute_activation_vector(model, dataloader, device, mode="train"):
                 squeezed_latent.append(logits[i])
 
                 # append the 3 latent representation to the AV
-                for latent_layer in latent_layers[i]:
-                    avg_pool = AdaptiveAvgPool2d((1,1))
-                    latent_repr = torch.squeeze(avg_pool(latent_layer))
+                for latent_layer in latent_layers:
+                    latent_repr = torch.squeeze(pooling(latent_layer))
                     squeezed_latent.append(latent_repr)
 
                 # contains the logits and the 3 latent layer representations concatinated in one vector
                 activation_vector = np.array(torch.cat(squeezed_latent,dim=0).cpu())
-
                 avs[labels[i]].append(activation_vector)
 
     # save all the acticvation vectors as pickle file
-    with open(f'avs_{mode}.pickle', 'wb') as f:
+    with open(f'avs_{mode}_maxpool.pickle', 'wb') as f:
         pickle.dump(avs, f)
 
     return avs
@@ -116,7 +114,6 @@ def compute_openmax(mrs, mavs, avs, num_classes, alpharank=10, apply_softmax=Tru
             
             logits = av[:num_classes]
             openmax_known = []
-            openmax_unknown = 0
 
             ranked_list = np.argsort(av[:num_classes])[::-1]
             ranked_alpha = np.zeros(num_classes)
@@ -206,9 +203,9 @@ if __name__ == "__main__":
     )
 
     # Check if the JSON file exists in the current directory
-    if os.path.isfile('./avs_train.pickle'):
+    if os.path.isfile('./avs_train_maxpool.pickle'):
         # Load the JSON file as a dictionary
-        with open('avs_train.pickle', 'rb') as f:
+        with open('avs_train_maxpool.pickle', 'rb') as f:
             avs_train = pickle.load(f)
         print(f"Loaded Activation Vectors for each class")
     else:
@@ -239,8 +236,8 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    if os.path.isfile('./avs_test.pickle'):
-        with open('avs_test.pickle', 'rb') as f:
+    if os.path.isfile('./avs_test_maxpool.pickle'):
+        with open('avs_test_maxpool.pickle', 'rb') as f:
             avs_test = pickle.load(f)
         print(f"loaded activation vectors for test data")
     else: 
@@ -270,8 +267,8 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    if os.path.isfile('./avs_outlier.pickle'):
-        with open('avs_outlier.pickle', 'rb') as f:
+    if os.path.isfile('./avs_outlier_maxpool.pickle'):
+        with open('avs_outlier_maxpool.pickle', 'rb') as f:
             avs_outlier = pickle.load(f)
         print(f"loaded activation vectors for outlying data")
     else: 
@@ -303,7 +300,7 @@ if __name__ == "__main__":
         ax[c].tick_params(axis='y', labelsize=17)
         ax[c].tick_params(axis='x', labelsize=17)
     plt.tight_layout()
-    plt.savefig("openmax_scores.png")  
+    plt.savefig("openmax_scores_maxpool.png")  
 
     # based on these assumptions, we can compute the AUROC using ONLY the outlying class score
     print("The AUROC is ",calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
