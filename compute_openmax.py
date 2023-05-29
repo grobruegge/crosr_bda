@@ -435,7 +435,7 @@ if __name__ == "__main__":
     accuracy = true_postivies / 10000
     #Normalized Accuracy
     normalized_accuracy = true_unknowns / (true_unknowns + false_unknowns)
-    #Weight needed according to formel from paper
+    #Weight needed according to formel from paper, can be set individually
     weight = 0.5
     print("mf_known =", sum(fs[:-1]) / (len(fs) - 1))
     print("mf =", sum(fs) / len(fs))
