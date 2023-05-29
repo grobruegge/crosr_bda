@@ -12,6 +12,7 @@ from sklearn.metrics import roc_auc_score
 from matplotlib import pyplot as plt
 import sklearn.metrics
 
+
 def compute_activation_vector(model, dataloader, device, pooling=AdaptiveMaxPool2d((1, 1)), mode="train"):
     # initialize a dictionary to store the activation vectors (AV) for each class
     avs = {i: [] for i in range(model.num_classes)}
@@ -174,7 +175,7 @@ def calc_roc_old(scores, gts):
     prec = []
     rec = []
     fmeasure = 0
-    #pdb.set_trace()
+    # pdb.set_trace()
     for p in pairs:
         if p[1]:
             tp += 1
@@ -197,12 +198,54 @@ def calc_roc_old(scores, gts):
         else:
             prs[rc] = max(prs[rc], pr)
 
-    print ("f =", fmeasure)
+    print("f =", fmeasure)
     mp = np.mean(list(prs.values()))
     print("mp =", mp)
 
     return fmeasure, mp
 
+
+def calc_extended_accuracy(scores, gts):
+
+    extended_accuracy = 0
+
+    print("Extended Accuracy =", extended_accuracy)
+
+    return extended_accuracy
+
+def calc_tp_fu(splitList_in_dist, num_class):
+
+    tp = 0
+    fu = 0
+
+    max_indices = []
+    for prediction in splitList_in_dist:
+        max_index = np.argmax(prediction)
+        max_indices.append(max_index)
+
+    for entry in max_indices:
+        if entry == num_class:
+            tp += 1
+        elif entry == 10:
+            fu += 1
+
+    return tp, fu
+
+
+def calc_tu(open_set_openmax_scores):
+
+    tu = 0
+
+    max_indices = []
+    for prediction in open_set_openmax_scores:
+        max_index = np.argmax(prediction)
+        max_indices.append(max_index)
+
+    for entry in max_indices:
+        if entry == 10:
+            tu += 1
+
+    return tu
 
 # workaround for lambda expandtion
 def expand_channels(x):
@@ -210,6 +253,8 @@ def expand_channels(x):
         return x.expand(3, -1, -1)
     else:
         return x
+def split_list(list, chunk_size):
+    return [list[i:i+chunk_size] for i in range(0, len(list), chunk_size)]
 
 if __name__ == "__main__":
 
@@ -297,7 +342,7 @@ if __name__ == "__main__":
         transforms.Resize(32),
         transforms.ToTensor(),
         transforms.Normalize(MEANS, STDS),
-        transforms.Lambda(expand_channels) #(lambda x: x.expand(3, -1, -1) if x.shape[0] == 1 else x)
+        transforms.Lambda(expand_channels)  # (lambda x: x.expand(3, -1, -1) if x.shape[0] == 1 else x)
     ])
 
     # load IMAGENET as outlying dataset from folder
@@ -353,25 +398,48 @@ if __name__ == "__main__":
     print("The AUROC is ",
           calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
 
+    # split the list into buckets of 1000
+    # With these buckets we can now calculate true positives for each class
+    splitList_in_dist = split_list(in_dist_openmax_scores, 1000)
+    true_postivies = 0
+    #False Uknowns needed to calculate normalized Accuracy, calculated from the in_dist_openmax_scores
+    false_unknowns = 0
+    #True Uknowns calculated from the open_set_max_scores
+    true_unknowns = 0
+    tu = calc_tu(open_set_openmax_scores)
+    true_unknowns += tu
+
     # From original paper source code
     fs = []
     mps = []
     aurocs = []
-    for c in range(0,11):
+    for c in range(0, 11):
         print("class =", c)
 
         scores = [openmax_score[c] for openmax_score in in_dist_openmax_scores + open_set_openmax_scores]
         gts = [x == c for i in range(11) for x in ([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
 
         f, mp = calc_roc_old(scores, gts)
+        if c < 10:
+            tp, fu = calc_tp_fu(splitList_in_dist[c], c)
+            true_postivies += tp
+            false_unknowns += fu
+
         fs.append(f)
         mps.append(mp)
 
         auroc = sklearn.metrics.roc_auc_score(gts, scores)
         print("AUROC: ", auroc)
         aurocs.append(auroc)
-
+    #Since multiclass classification accuracy can be calculated by identifying TP and dividing by observations
+    accuracy = true_postivies / 10000
+    #Normalized Accuracy
+    normalized_accuracy = true_unknowns / (true_unknowns + false_unknowns)
+    #Weight needed according to formel from paper
+    weight = 0.5
     print("mf_known =", sum(fs[:-1]) / (len(fs) - 1))
     print("mf =", sum(fs) / len(fs))
     print("mmp =", sum(mps) / len(mps))
+    print("Accuracy for 0-9 =", accuracy)
+    print("Extended Accuracy =", weight * accuracy + ((1 - weight) * normalized_accuracy))
     print("Average AUROC: ", np.mean(aurocs))
