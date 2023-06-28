@@ -102,7 +102,7 @@ class DHRNet(nn.Module):
         g1 = F.relu(self.deconv2(j2+g2))
         g0 = F.relu(self.deconv1(j1+g1))
 
-        return x5, g0, [z3,z2,z1]
+        return x5, g0, [z3, z2, z1] #torch.concat([z3, z2, z1], dim = 0)
     
 def epoch_train(net,device,trainloader,optimizer):
         
@@ -173,11 +173,11 @@ def epoch_val(net,device,testloader):
 
         images, labels = data[0].to(device), data[1].to(device)
 
-        logits, reconstruct,_ = net(images)
+        logits, reconstructs, _ = net(images)
 
         cls_loss = cls_criterion(logits, labels)
 
-        reconst_loss = reconst_criterion(reconstruct,images)
+        reconst_loss = reconst_criterion(reconstructs,images)
     
         loss = cls_loss + reconst_loss
 

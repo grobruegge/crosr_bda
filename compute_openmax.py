@@ -8,10 +8,11 @@ import scipy.spatial.distance as spd
 from tqdm import tqdm
 import pickle
 import os
-from sklearn.metrics import roc_auc_score
+from sklearn import metrics 
 from matplotlib import pyplot as plt
+import argparse
 
-def compute_activation_vector(model, dataloader, device, pooling=AdaptiveMaxPool2d((1,1)), mode="train"):
+def compute_activation_vector(args, model, dataloader, device, pooling=AdaptiveMaxPool2d((1,1)), mode="train"):
 
     # initialize a dictionary to store the activation vectors (AV) for each class
     avs = {i: [] for i in range(model.num_classes)}
@@ -60,7 +61,7 @@ def compute_activation_vector(model, dataloader, device, pooling=AdaptiveMaxPool
                 avs[labels[i]].append(activation_vector)
 
     # save all the acticvation vectors as pickle file
-    with open(f'avs_{mode}_maxpool.pickle', 'wb') as f:
+    with open(os.path.join('data', 'features', f'avs_{mode}_{args.feature_suffix}.pickle'), 'wb') as f:
         pickle.dump(avs, f)
 
     return avs
@@ -72,7 +73,7 @@ def compute_mean_activation_vector(avs, num_classes):
 
     for c in range(num_classes):
         # sum up the activation vectors (AV) for each class
-        mavs[c] = np.mean(avs[c], axis=0)   
+        mavs[c] = np.mean(avs[c], axis=0) 
 
     return mavs
 
@@ -80,12 +81,13 @@ def compute_distances(mavs, avs, num_classes):
 
     # dictionary that stores the eucledean distance between the activation vectors and the mean of all classes
     distances = {i: [] for i in range(num_classes)} 
-
+    
     # compute distance of all AV the their respective MAV
     for c, mav in mavs.items():
+        # distances[c] = np.linalg.norm(avs[c] - mav, axis=1)
         for av in avs[c]:
             distances[c].append(spd.euclidean(mav, av))
-            
+         
     return distances
 
 def fit_weibull_distribution(distances, tail_size, num_classes):
@@ -103,17 +105,16 @@ def fit_weibull_distribution(distances, tail_size, num_classes):
 
     return mrs
 
-def compute_openmax(mrs, mavs, avs, num_classes, alpharank=10, apply_softmax=True):
+def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=10):
     
     openmax_probs = []
     alpha_weights = [((alpharank+1) - i)/float(alpharank) for i in range(1, alpharank+1)]
-    
+
     for c, class_avs in avs.items():
         
         for av in class_avs:
-            
+
             logits = av[:num_classes]
-            openmax_known = []
 
             ranked_list = np.argsort(av[:num_classes])[::-1]
             ranked_alpha = np.zeros(num_classes)
@@ -139,10 +140,12 @@ def compute_openmax(mrs, mavs, avs, num_classes, alpharank=10, apply_softmax=Tru
             # a vector of shape (num_classes,) with the probability of the point being an outlier
             # with respect to each class
             outlying_prob = np.asarray(w_scores) * ranked_alpha
+
             # modify the entry in the logits accordingly
             openmax_known = logits * (1 - outlying_prob)
             # append the outlying class probabilities as everyting that has been "taken away"
-            openmax_prob = np.append(openmax_known, np.sum(logits * outlying_prob))
+            openmax_prob = np.append(openmax_known, np.sum(np.maximum(logits * outlying_prob, 0)))
+            # openmax_prob = np.append(openmax_known, np.sum(logits * outlying_prob, 0))
 
             if not apply_softmax:
                 # apply softmax on the recalibrated logits to get the openmax probabilities 
@@ -161,7 +164,7 @@ def calc_auroc(id_test_results, ood_test_results):
     trues = np.array(([0] * len(id_test_results)) + ([1] * len(ood_test_results)))
 
     # calculate AUROC
-    result = roc_auc_score(trues, scores)
+    result = metrics.roc_auc_score(trues, scores)
 
     return result   
    
@@ -174,6 +177,15 @@ if __name__ == "__main__":
     MEANS = [0.4914, 0.4822, 0.4465]
     STDS = [0.2023, 0.1994, 0.2010]
     TAIL_SIZE_WD = 100
+
+    parser = argparse.ArgumentParser(description='Get activation vectors')
+    # We can compute the features in different ways, e.g., using MaxPooling, AvgPooling or not considering the latent repr.
+    parser.add_argument('--feature_suffix',default='avgpool',type=str)
+    # We can either compute the SoftMax BEFORE the OpenMax calculation (as done in this paper) or AFTER the OpenMax calculation
+    # as done in the original paper of OpenMax
+    parser.add_argument('--apply_softmax_before',action='store_true')
+    parser.add_argument('--save_openmax_scores',action='store_true')
+    args = parser.parse_args()
 
     # Initialize Deep Hierarchical Network from weights
     model = DHRNet(NUM_CLASSES) # Initialize DHR Net from pre-defined architecture
@@ -203,15 +215,15 @@ if __name__ == "__main__":
     )
 
     # Check if the JSON file exists in the current directory
-    if os.path.isfile('./avs_train_maxpool.pickle'):
+    if os.path.isfile(os.path.join('data', 'features', f'avs_train_{args.feature_suffix}.pickle')):
         # Load the JSON file as a dictionary
-        with open('avs_train_maxpool.pickle', 'rb') as f:
+        with open(os.path.join('data', 'features', f'avs_train_{args.feature_suffix}.pickle'), 'rb') as f:
             avs_train = pickle.load(f)
         print(f"Loaded Activation Vectors for each class")
     else:
         print("File 'avs_train.pickle' does not exist in the current directory. Computing...")
         # Compute the activation vectors for all images in the train dataset
-        avs_train = compute_activation_vector(model, trainloader, DEVICE, mode="train")
+        avs_train = compute_activation_vector(args, model, trainloader, DEVICE, mode="train")
     
     # Compute the mean activation vector for all classes
     mavs = compute_mean_activation_vector(avs_train, NUM_CLASSES)
@@ -236,14 +248,14 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    if os.path.isfile('./avs_test_maxpool.pickle'):
-        with open('avs_test_maxpool.pickle', 'rb') as f:
+    if os.path.isfile(os.path.join('data', 'features', f'avs_test_{args.feature_suffix}.pickle')):
+        with open(os.path.join('data', 'features', f'avs_test_{args.feature_suffix}.pickle'), 'rb') as f:
             avs_test = pickle.load(f)
         print(f"loaded activation vectors for test data")
     else: 
         print("File 'avs_test.pickle' does not exist in the current directory. Computing...")
         # compute the AV for the test images
-        avs_test = compute_activation_vector(model, testloader, DEVICE, mode="test")
+        avs_test = compute_activation_vector(args, model, testloader, DEVICE, mode="test")
 
     # these transformation are only used for outlying datapoints and make sure they follow 
     # some basic constraints such as size (32x32) and have 3 channels
@@ -267,40 +279,52 @@ if __name__ == "__main__":
         num_workers=2
     )
 
-    if os.path.isfile('./avs_outlier_maxpool.pickle'):
-        with open('avs_outlier_maxpool.pickle', 'rb') as f:
+    if os.path.isfile(os.path.join('data', 'features', f'avs_outlier_{args.feature_suffix}.pickle')):
+        with open(os.path.join('data', 'features', f'avs_outlier_{args.feature_suffix}.pickle'), 'rb') as f:
             avs_outlier = pickle.load(f)
         print(f"loaded activation vectors for outlying data")
     else: 
         print("File 'avs_outlier.pickle' does not exist in the current directory. Computing...")
-        avs_outlier = compute_activation_vector(model, outlierloader, DEVICE, mode="outlier")
+        avs_outlier = compute_activation_vector(args, model, outlierloader, DEVICE, mode="outlier")
 
     # This function recalibrates the SoftMax scores and adds an editional unit for unkown probability and thus computes OpenMax 
     # it returns the outlier probabilities (thus the additional class added by OpenMax) for each of the images
 
     # first compute the openmax scores for the test images (for CIPHAR-10 SHAPE=[10000, 11])
     # here we expect the last entry (outlying class score) to be close to 0, because no outliers
-    in_dist_openmax_scores = compute_openmax(mrs, mavs, avs_test, NUM_CLASSES)
+    in_dist_openmax_scores = compute_openmax(mrs, mavs, avs_test, NUM_CLASSES, apply_softmax=args.apply_softmax_before)
 
     # then compute the openmax scores for the outlying images (for CIPHAR-10 SHAPE=[10000, 11])
     # here we expect the last entry (outlying class score) to be close to 1, because this are outliers
-    open_set_openmax_scores = compute_openmax(mrs, mavs, avs_outlier, NUM_CLASSES)
+    open_set_openmax_scores = compute_openmax(mrs, mavs, avs_outlier, NUM_CLASSES, apply_softmax=args.apply_softmax_before)
     
+    # file name to save plots and scores
+    file_name = f'openmax_scores_{args.feature_suffix}_{TAIL_SIZE_WD}_{"softmax_before" if args.apply_softmax_before else "softmax_after"}'
+
     # Create a scatterplot to plot the outlying probability for test and outlying images
-    fig, ax = plt.subplots(nrows = 11, ncols = 1, figsize=(30, 165))
-    for c in range(0, 11):
-        in_dist_om_class = [om[c] for om in in_dist_openmax_scores]
-        open_set_om_class = [om[c] for om in open_set_openmax_scores]
-        ax[c].scatter(range(len(in_dist_om_class)), in_dist_om_class, color='blue', label='in_dist_scores')
-        ax[c].scatter(range(len(in_dist_om_class), len(in_dist_om_class)+len(open_set_om_class)), open_set_om_class, color='red', label='open_set_scores')
-        ax[c].set_xlabel('Index', fontsize=20)
-        ax[c].set_ylabel('Value', fontsize=20)
-        ax[c].legend(fontsize=20)
-        ax[c].set_title(f'OpenMax Scores of Class {c}', fontsize=25)
-        ax[c].tick_params(axis='y', labelsize=17)
-        ax[c].tick_params(axis='x', labelsize=17)
+    in_dist_om_class = [om[-1] for om in in_dist_openmax_scores]
+    open_set_om_class = [om[-1] for om in open_set_openmax_scores]
+    fig, ax = plt.subplots(figsize=(30, 15))
+    ax.scatter(range(len(in_dist_om_class)), in_dist_om_class, color='blue', label='in_dist_scores')
+    ax.scatter(range(len(in_dist_om_class), len(in_dist_om_class)+len(open_set_om_class)), open_set_om_class, color='red', label='open_set_scores')
+    ax.set_xlabel('Index', fontsize=20)
+    ax.set_ylabel('Value', fontsize=20)
+    ax.tick_params(axis='y', labelsize=17)
+    ax.tick_params(axis='x', labelsize=17)
+    ax.set_title(f'OpenMax Scores of outlying class', fontsize=25)
+    ax.legend(fontsize=20)
     plt.tight_layout()
-    plt.savefig("openmax_scores_maxpool.png")  
+    plt.savefig(os.path.join('data', 'plots', f'{file_name}.png'))
 
     # based on these assumptions, we can compute the AUROC using ONLY the outlying class score
     print("The AUROC is ",calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
+
+    y_true = np.concatenate((np.repeat(np.arange(10), 1000), np.repeat(10, 10000)))   
+    y_pred = np.array(in_dist_openmax_scores+open_set_openmax_scores)
+
+    if args.save_openmax_scores:
+        with open(os.path.join('data', 'plot_pickles', f'{file_name}.pickle'), 'wb') as f:
+            pickle.dump(y_pred, f)
+
+    print("Macro-Averaged F1-Score: ", metrics.f1_score(y_true=y_true, y_pred=np.argmax(y_pred, axis=-1), average='macro'))
+    print(metrics.classification_report(y_true=y_true, y_pred=np.argmax(y_pred, axis=-1)))
