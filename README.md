@@ -44,11 +44,15 @@ This repository also provides pre-trained weights: `dhr_net.pt`
 
 ## Conclusions
 
+### Setting
+
 All the following conclusions are based upon the followin setting:
 - We use CIFAR-10 as underlying dataset with 50'000 training images and 10'000 test images of 10 classes (classIDs 0-9)
 - We use 10'000 images of ImageNet as outlying images (cropped to be of the same size). We denote their classID as 10.
 
 Based on our experiments, we made several observation which scrutanize/challenge the effectiveness of the CROSR-framework. 
+
+### Summary of results
 
 First of all, we note that the AUROC with ~90% can be considered as fairly high. When _only_ looking at the outyling class probabilities (class 10, i.e., the class calculated by OpenMax), it might be possible to find a threshold to seperate inlying and outlying images. This is exactly what the AUROC-metrics represents. The following image displays the OpenMax-Scores of of the outlying class for each image. On the left side are the images of the test dataset (first 10'000 values) and on the right side are the images of the outlying dataset (last 10'000 values):
 
@@ -78,13 +82,31 @@ weighted avg       0.38      0.45      0.32     20000
 
 In the following we propose an explaination for this behavior. First we are going to recap the basic concept of the CROSR framework.
 
+### Differentiation using the latent embedding space
+
 CSOSR relies on the assumption that inlying and outlying images can be seperated in an _latent embedding space_ created my the Deep Neural Network (in their case Deep Hierarchical Reconstruction Network). This latent embedding space is spanned by the activation vector (AV) of an image which can (but does not have to be as we see later) the output of the final layer of a model. Within this space they calculate the **Mean** Activation Vector (MAV) for all _correctly classfied training_ images for all of the classes. Thus, each class has one MAV. The basic idea now is to utalize the distances of the AV of new images to the MAVs as a measure of oulyingness (larger distances indicate that the image is an outlier).  
 
 Using the logits, i.e., the vector of raw (non-normalized) predictions that the model generates, this framework is based in the assumption that the confidence of the model for outyling images is lower than for inlying images. Lower confidence is indicated by lower logits especially of the predicted class. This general assumption seems to hold in our setting. The following figure displays the values of the logits _only_ of the class with the highest value for each image. The colors refer to the different classes. The test 10'000 test images on the left are in order w.r.t. their class (first 1'000 are of class 0 and so on):
 
 ![Image which displays the logits  of the class with the highest value for each image. On the left side are the images of the test dataset (first 10'000 values) and on the right side are the images of the outlying dataset (last 10'000 values)](data/plots/activation_values_argmax_unnormalized_values.png)
 
-A strong baseline compared to this framework would thus be a simple threshold based on the highest logits value for each class. There are several downsides of this approach, the most proment being that Neural Networks tend to be over-confident in their prediction, resulting in high logit values for images which do not belong to any known class.
+### Basline
+
+A strong baseline compared to this framework would thus be a simple threshold based on the raw predicition values for each class. For comparison, we implemented this baseline by fitting a normal distribution (mean, standard deviation) on the logits for _correctly classified_ training images for each class. For more detail refer to the Jupyter-Notebook `visualizations.ipynb`. First, we show that the prediction values of outyling images of the class with the highest values to follow a different (normal) distribution than the training images:
+
+![Comparison of prediction values of class 1 (as an example) for training images (in green; normal distribution indicated in black) and outyling images (in red)](data/plots/normal_distribution_fitting_for_classes.png)
+
+Next, we calculate the z-score of each images as z_score = (pred_value - class_mean) / class_std, where
+- pred_value: Highest logit entry of this image
+- class_mean, class_std: Mean and Standard Deviation of the class with the highest raw prediction value of this image  
+
+Using this z-score as measure of outlyingness, we already achieve an AUROC of ~82%!
+
+![Image which displays the z-scores for each image. On the left side are the images of the test dataset (first 10'000 values) and on the right side are the images of the outlying dataset (last 10'000 values)](data/plots/baseline_scores.png)
+
+### Meta-Recognition System of CROSR framework
+
+There are several downsides of this approach, the most proment being that Neural Networks tend to be over-confident in their prediction, resulting in high logit values for images which do not belong to any known class.
 
 The CROSR frameworks fits a Weibull-distribution as Meta-Recognition-System (MRS) which is basically a threshold _for each class_ that represents the maximum distance of an AV to the MAV of this class to be considered as inlier. Rather than returning a binary threshold (0=inlier; 1=outlier), the Weibull-distribition caluclates a w-score (ranges from [0,1]) which can be interpreted as outlying probability of an image w.r.t. a specific class. Note that this oulying probability is always **w.r.t. a specific class**, thus each image has as many w-scores as classes are present in the dataset.
 
@@ -94,6 +116,8 @@ The w-score of an image will be ~1 for all classes except the predicted one beca
 
 Note the strong similarity between this figure and the figure which displays the OpenMax-Scores of of the outlying class for each image above. Consequently, the distance of oulying images to their (wrongly) predicted class is not high enough because this approach suffers from the same downside as the simple baseline, namely that the model is over-confident in its predictions.
 
+### Using latent feature representation
+
 Contrary to previous work (e.g., the initial OpenMax release: https://arxiv.org/pdf/1511.06233.pdf), the CROSR framework spans the embedding space by _not only_ using the logits but also using latent representations of an image. These latent representation are features of three intermediate layers in the DHRNet aand aim improve the semantic meaning of embedding space.
 
 Our observation and main explaination for the bad performance is that almost all of these latent features are ~0 and do not add any additional information. The following figure displays the MAV of class 7 as an example. The same holds among all classes and can be verified using the Jupyter-Notebook `visualizations.ipynb`:
@@ -101,6 +125,8 @@ Our observation and main explaination for the bad performance is that almost all
 ![Image which displays the values of the Mean Activation Vector (MAV) of class 7 as an example](data/plots/mav_class_7.png)
 
 One additional finding is the strong influence of the parameter `tailsize` of the Weibull-distribution. This parameter defines how many of the largest distances should be used to fit the distrbution. Larger tailsize results in a much better detection of outyling images (True Positives), but also yields many inlying images which are classified as outliers (False Positives).
+
+### Wrap-Up
 
 Let's wrap this up by walking through one example to understand what goes wrong:
 
