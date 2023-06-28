@@ -107,6 +107,7 @@ def fit_weibull_distribution(distances, tail_size, num_classes):
 
 def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=10):
     
+    w_scores_and_logits = []
     openmax_probs = []
     alpha_weights = [((alpharank+1) - i)/float(alpharank) for i in range(1, alpharank+1)]
 
@@ -133,6 +134,8 @@ def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=1
                 w_score = mrs[idx].w_score(spd.euclidean(mavs[idx], av))
                 w_scores.append(w_score)
 
+            w_scores_and_logits.append((np.stack(w_scores), logits))
+
             if apply_softmax:
                 # Apply Softmax on the logits
                 logits = np.exp(logits) / np.sum(np.exp(logits))
@@ -153,7 +156,7 @@ def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=1
 
             openmax_probs.append(openmax_prob)
 
-    return openmax_probs
+    return openmax_probs, w_scores_and_logits
 
 def calc_auroc(id_test_results, ood_test_results):
     
@@ -185,6 +188,7 @@ if __name__ == "__main__":
     # as done in the original paper of OpenMax
     parser.add_argument('--apply_softmax_before',action='store_true')
     parser.add_argument('--save_openmax_scores',action='store_true')
+    parser.add_argument('--save_w_scores',action='store_true')
     args = parser.parse_args()
 
     # Initialize Deep Hierarchical Network from weights
@@ -292,18 +296,24 @@ if __name__ == "__main__":
 
     # first compute the openmax scores for the test images (for CIPHAR-10 SHAPE=[10000, 11])
     # here we expect the last entry (outlying class score) to be close to 0, because no outliers
-    in_dist_openmax_scores = compute_openmax(mrs, mavs, avs_test, NUM_CLASSES, apply_softmax=args.apply_softmax_before)
+    in_dist_openmax_scores, w_scores_id = compute_openmax(mrs, mavs, avs_test, NUM_CLASSES, apply_softmax=args.apply_softmax_before)
 
     # then compute the openmax scores for the outlying images (for CIPHAR-10 SHAPE=[10000, 11])
     # here we expect the last entry (outlying class score) to be close to 1, because this are outliers
-    open_set_openmax_scores = compute_openmax(mrs, mavs, avs_outlier, NUM_CLASSES, apply_softmax=args.apply_softmax_before)
+    open_set_openmax_scores, w_scores_ood = compute_openmax(mrs, mavs, avs_outlier, NUM_CLASSES, apply_softmax=args.apply_softmax_before)
     
     # file name to save plots and scores
-    file_name = f'openmax_scores_{args.feature_suffix}_{TAIL_SIZE_WD}_{"softmax_before" if args.apply_softmax_before else "softmax_after"}'
+    file_name = f'{args.feature_suffix}_{TAIL_SIZE_WD}_{"softmax_before" if args.apply_softmax_before else "softmax_after"}'
 
-    # Create a scatterplot to plot the outlying probability for test and outlying images
+    if args.save_w_scores:
+        with open(os.path.join('data', 'plot_pickles', f'w_scores_{file_name}.pickle'), 'wb') as f:
+            pickle.dump(w_scores_id+w_scores_ood, f)
+
+    # filter out the outlying class probabilit
     in_dist_om_class = [om[-1] for om in in_dist_openmax_scores]
     open_set_om_class = [om[-1] for om in open_set_openmax_scores]
+
+    # Create a scatterplot to plot the outlying probability for test and outlying images
     fig, ax = plt.subplots(figsize=(30, 15))
     ax.scatter(range(len(in_dist_om_class)), in_dist_om_class, color='blue', label='in_dist_scores')
     ax.scatter(range(len(in_dist_om_class), len(in_dist_om_class)+len(open_set_om_class)), open_set_om_class, color='red', label='open_set_scores')
@@ -314,7 +324,8 @@ if __name__ == "__main__":
     ax.set_title(f'OpenMax Scores of outlying class', fontsize=25)
     ax.legend(fontsize=20)
     plt.tight_layout()
-    plt.savefig(os.path.join('data', 'plots', f'{file_name}.png'))
+
+    plt.savefig(os.path.join('data', 'plots', f'openmax_scores_{file_name}.png'))
 
     # based on these assumptions, we can compute the AUROC using ONLY the outlying class score
     print("The AUROC is ",calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
@@ -323,7 +334,7 @@ if __name__ == "__main__":
     y_pred = np.array(in_dist_openmax_scores+open_set_openmax_scores)
 
     if args.save_openmax_scores:
-        with open(os.path.join('data', 'plot_pickles', f'{file_name}.pickle'), 'wb') as f:
+        with open(os.path.join('data', 'plot_pickles', f'openmax_scores_{file_name}.pickle'), 'wb') as f:
             pickle.dump(y_pred, f)
 
     print("Macro-Averaged F1-Score: ", metrics.f1_score(y_true=y_true, y_pred=np.argmax(y_pred, axis=-1), average='macro'))
