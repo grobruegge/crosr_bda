@@ -153,6 +153,7 @@ def compute_openmax(mrs, mavs, avs, num_classes, alpharank=10, apply_softmax=Tru
 
 
 def calc_auroc(id_test_results, ood_test_results):
+    print(id_test_results)
     # concat the socres
     scores = np.concatenate((id_test_results, ood_test_results))
 
@@ -201,28 +202,51 @@ def calc_roc_old(scores, gts):
     mp = np.mean(list(prs.values()))
     print("mp =", mp)
 
-    return fmeasure, mp, rec, fp
-
-def Trueneg(gts):
-    pairs = [(x, y) for x, y in zip(scores, gts)]
-    #pairs.sort(key=lambda x: -x[0])
-    fn = 0
-    tn = 0
-    for p in pairs:
-        if p[1]:
-            tn += 1
-        else:
-            fn += 1
-        #s = float(tn) / (tn + fn)
-
-    return tn
+    return fmeasure, mp, rec, fp #New
 
 # workaround for lambda expandtion
-def expand_channels(x):
+def expand_channels(x): #New
     if x.shape[0] == 1:
         return x.expand(3, -1, -1)
     else:
         return x
+
+
+#Youden’s index for OSR
+# S= TN/(TN + FP)
+def calculateJ(in_dist_openmax_scores, open_set_openmax_scores): #New
+    recs = []
+    fps = []
+    tns = []
+
+    for c in range(0, 11):
+        print("class =", c)
+
+        scores = [openmax_score[c] for openmax_score in in_dist_openmax_scores + open_set_openmax_scores]
+        gts = [x == c for i in range(11) for x in ([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
+
+        gts_neg = [x != c for i in range(11) for x in([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
+
+        pairs = [(x, y) for x, y in zip(scores, gts_neg)]
+        fn = 0
+        tn = 0
+        for p in pairs:
+            if p[1]:
+                tn += 1
+            else:
+                fn += 1
+        tns.append(tn)
+
+        f, mp, rec, fp = calc_roc_old(scores, gts)
+        recs.append(rec)
+        fps.append(fp)
+
+    s = np.mean(tns) / (np.mean(tns) + np.mean(fps))
+
+    J = np.mean(recs) + np.mean(s) - 1
+
+    return J
+
 
 if __name__ == "__main__":
 
@@ -371,24 +395,13 @@ if __name__ == "__main__":
     mps = []
     aurocs = []
 
-    recs = []
-    fps = []
-    tns = []
-
     for c in range(0,11):
         print("class =", c)
 
         scores = [openmax_score[c] for openmax_score in in_dist_openmax_scores + open_set_openmax_scores]
         gts = [x == c for i in range(11) for x in ([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
 
-        gts_neg = [x != c for i in range(11) for x in([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
-
-        tn = Trueneg( gts_neg) #scores_neg
-        tns.append(tn)
-
-        f, mp, rec, fp = calc_roc_old(scores, gts)
-        recs.append(rec)
-        fps.append(fp)
+        f, mp, rec, fp = calc_roc_old(scores, gts) #New
         fs.append(f)
         mps.append(mp)
 
@@ -403,9 +416,4 @@ if __name__ == "__main__":
 
 
     # Youden’s index for OSR
-    # S= TN/(TN + FP)
-    s = np.mean(tns) / (np.mean(tns) + np.mean(fps))
-
-    J = np.mean(recs) + np.mean(s) - 1
-
-    print("Youden’s index for OSR: ", J)
+    print("Youden’s index for OSR: ", calculateJ(in_dist_openmax_scores, open_set_openmax_scores)) #New
