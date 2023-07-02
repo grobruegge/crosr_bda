@@ -204,15 +204,6 @@ def calc_roc_old(scores, gts):
 
     return fmeasure, mp
 
-
-def calc_extended_accuracy(scores, gts):
-
-    extended_accuracy = 0
-
-    print("Extended Accuracy =", extended_accuracy)
-
-    return extended_accuracy
-
 def calc_tp_fu(splitList_in_dist, num_class):
 
     tp = 0
@@ -246,6 +237,26 @@ def calc_tu(open_set_openmax_scores):
             tu += 1
 
     return tu
+
+def calculate_acc_extAcc(in_dist_openmax_scores, open_set_openmax_scores):
+
+    splitList_in_dist = split_list(in_dist_openmax_scores, 1000)
+    true_positives = 0
+    false_unknowns = 0
+    true_unknowns = 0
+
+    true_unknowns += calc_tu(open_set_openmax_scores)
+
+    for c in range(0, 11):
+        if c < 10:
+            tp, fu = calc_tp_fu(splitList_in_dist[c], c)
+            true_positives += tp
+            false_unknowns += fu
+
+    accuracy = true_positives / 10000
+    normalized_accuracy = true_unknowns / (true_unknowns + false_unknowns)
+    return accuracy, normalized_accuracy
+
 
 # workaround for lambda expandtion
 def expand_channels(x):
@@ -398,17 +409,6 @@ if __name__ == "__main__":
     print("The AUROC is ",
           calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
 
-    # split the list into buckets of 1000
-    # With these buckets we can now calculate true positives for each class
-    splitList_in_dist = split_list(in_dist_openmax_scores, 1000)
-    true_postivies = 0
-    #False Uknowns needed to calculate normalized Accuracy, calculated from the in_dist_openmax_scores
-    false_unknowns = 0
-    #True Uknowns calculated from the open_set_max_scores
-    true_unknowns = 0
-    tu = calc_tu(open_set_openmax_scores)
-    true_unknowns += tu
-
     # From original paper source code
     fs = []
     mps = []
@@ -420,21 +420,15 @@ if __name__ == "__main__":
         gts = [x == c for i in range(11) for x in ([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
 
         f, mp = calc_roc_old(scores, gts)
-        if c < 10:
-            tp, fu = calc_tp_fu(splitList_in_dist[c], c)
-            true_postivies += tp
-            false_unknowns += fu
-
         fs.append(f)
         mps.append(mp)
 
         auroc = sklearn.metrics.roc_auc_score(gts, scores)
         print("AUROC: ", auroc)
         aurocs.append(auroc)
-    #Since multiclass classification accuracy can be calculated by identifying TP and dividing by observations
-    accuracy = true_postivies / 10000
-    #Normalized Accuracy
-    normalized_accuracy = true_unknowns / (true_unknowns + false_unknowns)
+
+    accuracy, normalized_accuracy = calculate_acc_extAcc(in_dist_openmax_scores, open_set_openmax_scores)
+
     #Weight needed according to formel from paper, can be set individually
     weight = 0.5
     print("mf_known =", sum(fs[:-1]) / (len(fs) - 1))
