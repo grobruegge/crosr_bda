@@ -11,6 +11,7 @@ import os
 from sklearn import metrics 
 from matplotlib import pyplot as plt
 import argparse
+from tabulate import tabulate
 
 def compute_activation_vector(args, model, dataloader, device, pooling=AdaptiveMaxPool2d((1,1)), mode="train"):
 
@@ -170,7 +171,7 @@ def calc_auroc(id_test_results, ood_test_results):
     result = metrics.roc_auc_score(trues, scores)
 
     return result   
-   
+
 if __name__ == "__main__":
 
     # Define some fixed variables
@@ -309,6 +310,10 @@ if __name__ == "__main__":
         with open(os.path.join('data', 'plot_pickles', f'w_scores_{file_name}.pickle'), 'wb') as f:
             pickle.dump(w_scores_id+w_scores_ood, f)
 
+    if args.save_openmax_scores:
+        with open(os.path.join('data', 'plot_pickles', f'openmax_scores_{file_name}.pickle'), 'wb') as f:
+            pickle.dump(np.array(in_dist_openmax_scores+open_set_openmax_scores), f)
+
     # filter out the outlying class probabilit
     in_dist_om_class = [om[-1] for om in in_dist_openmax_scores]
     open_set_om_class = [om[-1] for om in open_set_openmax_scores]
@@ -327,15 +332,43 @@ if __name__ == "__main__":
 
     plt.savefig(os.path.join('data', 'plots', f'openmax_scores_{file_name}.png'))
 
-    # based on these assumptions, we can compute the AUROC using ONLY the outlying class score
-    print("The AUROC is ",calc_auroc([om[-1] for om in in_dist_openmax_scores], [om[-1] for om in open_set_openmax_scores]))
+    # Calculate metrics for each class
+    fpr = dict() # False-Positive-Rates
+    tpr = dict() # True Positive-Rates
+    thresholds = dict() # thresholds 
+    roc_auc = dict() 
+    j_stats = dict() 
+    opt_thresholds = dict()
+    f1_scores = dict()
+    f1_scores_w_cutoff = dict()
 
-    y_true = np.concatenate((np.repeat(np.arange(10), 1000), np.repeat(10, 10000)))   
-    y_pred = np.array(in_dist_openmax_scores+open_set_openmax_scores)
+    for c in range(NUM_CLASSES + 1):
+        
+        scores = [om[c] for om in in_dist_openmax_scores + open_set_openmax_scores]
+        trues = [x == c for i in range(NUM_CLASSES + 1) for x in ([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
 
-    if args.save_openmax_scores:
-        with open(os.path.join('data', 'plot_pickles', f'openmax_scores_{file_name}.pickle'), 'wb') as f:
-            pickle.dump(y_pred, f)
+        fpr[c], tpr[c], thresholds[c] = metrics.roc_curve(trues, scores, drop_intermediate=False)
 
-    print("Macro-Averaged F1-Score: ", metrics.f1_score(y_true=y_true, y_pred=np.argmax(y_pred, axis=-1), average='macro'))
-    print(metrics.classification_report(y_true=y_true, y_pred=np.argmax(y_pred, axis=-1)))
+        # calculate AUROC score
+        roc_auc[c] = metrics.auc(fpr[c], tpr[c])
+
+        # calculate optimal threshold based on Youden's J-statistic
+        j_stats[c] = tpr[c] - fpr[c]
+        opt_thresholds[c] = thresholds[c][np.argmax(j_stats[c])]
+        
+        # calculate F1 score using argmax
+        f1_scores[c] = metrics.f1_score(trues, np.argmax(in_dist_openmax_scores + open_set_openmax_scores, axis=-1) == c)
+        # calculate F1-Score using cutoff-index
+        f1_scores_w_cutoff[c] = metrics.f1_score(trues, [1 if score >= opt_thresholds[c] else 0 for score in scores])
+
+    column_headers = ["Class", "F1-Score", "ROC-AUC", "Optimal Cut-Off Point", "F1-Score with Cut-Off"]
+    row_headers = list(range(11))
+
+    table = tabulate(
+        tabular_data=[[f1_scores.get(c, None), roc_auc.get(c, None), opt_thresholds.get(c, None), f1_scores_w_cutoff.get(c, None)] for c in range(NUM_CLASSES + 1)],
+        headers=column_headers, 
+        showindex=row_headers, 
+        floatfmt=".4f"
+    )
+
+    print(table)
