@@ -159,19 +159,60 @@ def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=1
 
     return openmax_probs, w_scores_and_logits
 
-def calc_auroc(id_test_results, ood_test_results):
+def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
     
-    # concat the socres
-    scores = np.concatenate((id_test_results, ood_test_results))
+    fpr = dict() # False-Positive-Rates (FPR) for each class
+    tpr = dict() # True Positive-Rates (TPR) for each class
+    thresholds = dict() # Thresholds for each class
+    roc_auc = dict() # AUROC for each class
+    j_stats = dict() #Youden's J-statistic for each class
+    opt_thresholds = dict() # Optimal Cut-Off Threshold based on Youden's J-statistic for each class
+    f1_scores = dict() # F1-Score using argmax for each class
+    f1_scores_w_cutoff = dict() # F1-Score using Cut-Off Threshold for each class
+    acc_scores = dict() # Accuracy Scores for each class
+
+    # iterate through all possible classes
+    for c in range(NUM_CLASSES + 1):
+        
+        # Only look at the scores of this class iteration
+        scores = [om[c] for om in in_dist_openmax_scores + open_set_openmax_scores]
+        # Create a list of lenght 20'000 containing only True for the class indices of this loop iteration
+        trues = [x == c for i in range(NUM_CLASSES + 1) for x in ([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
+
+        # receive the FPR, TPR and choosen thresholds
+        fpr[c], tpr[c], thresholds[c] = metrics.roc_curve(trues, scores, drop_intermediate=False)
+
+        # calculate AUROC score
+        roc_auc[c] = metrics.auc(fpr[c], tpr[c])
+
+        # calculate optimal threshold based on Youden's J-statistic
+        j_stats[c] = tpr[c] - fpr[c]
+        opt_thresholds[c] = thresholds[c][np.argmax(j_stats[c])]
+        
+        argmax_predictions = np.argmax(in_dist_openmax_scores + open_set_openmax_scores, axis=-1) == c
+        threshold_predictions = [1 if score >= opt_thresholds[c] else 0 for score in scores]
+
+        # calculate F1 score using argmax
+        f1_scores[c] = metrics.f1_score(trues, argmax_predictions)
+        # calculate F1-Score using cutoff-index
+        f1_scores_w_cutoff[c] = metrics.f1_score(trues, threshold_predictions)
+
+        acc_scores[c] = metrics.accuracy_score(trues, argmax_predictions)
+
+
+    # create a table to be printed in the console
+    column_headers = ["Class", "Accuracy", "F1-Score", "ROC-AUC", "Optimal Cut-Off Point", "F1-Score with Cut-Off"]
+    row_headers = list(range(11))
+
+    table = tabulate(
+        tabular_data=[[acc_scores.get(c, None), f1_scores.get(c, None), roc_auc.get(c, None), opt_thresholds.get(c, None), f1_scores_w_cutoff.get(c, None)] for c in range(NUM_CLASSES + 1)],
+        headers=column_headers, 
+        showindex=row_headers, 
+        floatfmt=".4f"
+    )
+
+    return table
     
-    # this is what we would expect (see main function for explaination)
-    trues = np.array(([0] * len(id_test_results)) + ([1] * len(ood_test_results)))
-
-    # calculate AUROC
-    result = metrics.roc_auc_score(trues, scores)
-
-    return result   
-
 if __name__ == "__main__":
 
     # Define some fixed variables
@@ -332,43 +373,6 @@ if __name__ == "__main__":
 
     plt.savefig(os.path.join('data', 'plots', f'openmax_scores_{file_name}.png'))
 
-    # Calculate metrics for each class
-    fpr = dict() # False-Positive-Rates
-    tpr = dict() # True Positive-Rates
-    thresholds = dict() # thresholds 
-    roc_auc = dict() 
-    j_stats = dict() 
-    opt_thresholds = dict()
-    f1_scores = dict()
-    f1_scores_w_cutoff = dict()
-
-    for c in range(NUM_CLASSES + 1):
-        
-        scores = [om[c] for om in in_dist_openmax_scores + open_set_openmax_scores]
-        trues = [x == c for i in range(NUM_CLASSES + 1) for x in ([0] * 1000 if i == 0 else ([i] * 1000 if i < 10 else [10] * 10000))]
-
-        fpr[c], tpr[c], thresholds[c] = metrics.roc_curve(trues, scores, drop_intermediate=False)
-
-        # calculate AUROC score
-        roc_auc[c] = metrics.auc(fpr[c], tpr[c])
-
-        # calculate optimal threshold based on Youden's J-statistic
-        j_stats[c] = tpr[c] - fpr[c]
-        opt_thresholds[c] = thresholds[c][np.argmax(j_stats[c])]
-        
-        # calculate F1 score using argmax
-        f1_scores[c] = metrics.f1_score(trues, np.argmax(in_dist_openmax_scores + open_set_openmax_scores, axis=-1) == c)
-        # calculate F1-Score using cutoff-index
-        f1_scores_w_cutoff[c] = metrics.f1_score(trues, [1 if score >= opt_thresholds[c] else 0 for score in scores])
-
-    column_headers = ["Class", "F1-Score", "ROC-AUC", "Optimal Cut-Off Point", "F1-Score with Cut-Off"]
-    row_headers = list(range(11))
-
-    table = tabulate(
-        tabular_data=[[f1_scores.get(c, None), roc_auc.get(c, None), opt_thresholds.get(c, None), f1_scores_w_cutoff.get(c, None)] for c in range(NUM_CLASSES + 1)],
-        headers=column_headers, 
-        showindex=row_headers, 
-        floatfmt=".4f"
-    )
+    table = calc_metrics(in_dist_openmax_scores, open_set_openmax_scores)
 
     print(table)
