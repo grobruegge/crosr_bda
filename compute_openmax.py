@@ -201,7 +201,7 @@ def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
 
 
     # create a table to be printed in the console
-    column_headers = ["Class", "Accuracy", "F1-Score", "ROC-AUC", "Optimal Cut-Off Point", "F1-Score with Cut-Off"]
+    column_headers = ["Class", "Accuracy", "F1-Score using argmax", "ROC-AUC", "Optimal Cut-Off Threshold", "F1-Score using Cut-Off"]
     row_headers = list(range(11))
 
     table = tabulate(
