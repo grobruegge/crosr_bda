@@ -192,7 +192,7 @@ def epoch_val(net,device,testloader):
 
     return [(100 * (correct / total)), (total_cls_loss/iter), (total_reconst_loss/iter), (total_loss/iter)]
 
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no 1cover
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(device)

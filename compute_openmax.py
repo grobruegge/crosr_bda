@@ -29,7 +29,7 @@ def compute_activation_vector(args, model, dataloader, device, pooling=AdaptiveM
         inputs, labels = inputs.to(device), np.array(labels.cpu())
 
         with torch.no_grad():
-            # run inference of model (caclulates the model output for the whole batch)
+            # run inference of model (calculates the model output for the whole batch)
             logits, _, latent_layers = model(inputs)
 
         # determine predicted class based on the max value of the logits (of site num_classes)
@@ -160,7 +160,7 @@ def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=1
     return openmax_probs, w_scores_and_logits
 
 def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
-    
+    NUM_CLASSES = 10
     fpr = dict() # False-Positive-Rates (FPR) for each class
     tpr = dict() # True Positive-Rates (TPR) for each class
     thresholds = dict() # Thresholds for each class
@@ -213,7 +213,7 @@ def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
 
     return table
     
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no 1cover
 
     # Define some fixed variables
     DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
