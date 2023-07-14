@@ -1,4 +1,5 @@
 import torch
+from sympy.testing.runtests import split_list
 from torch.nn import AdaptiveAvgPool2d, AdaptiveMaxPool2d
 from train_dhr_nn import DHRNet
 from torchvision import datasets, transforms
@@ -212,7 +213,60 @@ def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
     )
 
     return table
-    
+
+def calc_tp_fu(splitList_in_dist, num_class):
+
+    tp = 0
+    fu = 0
+
+    max_indices = []
+    for prediction in splitList_in_dist:
+        max_index = np.argmax(prediction)
+        max_indices.append(max_index)
+
+    for entry in max_indices:
+        if entry == num_class:
+            tp += 1
+        elif entry == 10:
+            fu += 1
+
+    return tp, fu
+
+
+def calc_tu(open_set_openmax_scores):
+
+    tu = 0
+
+    max_indices = []
+    for prediction in open_set_openmax_scores:
+        max_index = np.argmax(prediction)
+        max_indices.append(max_index)
+
+    for entry in max_indices:
+        if entry == 10:
+            tu += 1
+
+    return tu
+
+def calculate_acc_extAcc(in_dist_openmax_scores, open_set_openmax_scores):
+
+    splitList_in_dist = split_list(in_dist_openmax_scores, 1000)
+    true_positives = 0
+    false_unknowns = 0
+    true_unknowns = 0
+
+    true_unknowns += calc_tu(open_set_openmax_scores)
+
+    for c in range(0, 11):
+        if c < 10:
+            tp, fu = calc_tp_fu(splitList_in_dist[c], c)
+            true_positives += tp
+            false_unknowns += fu
+
+    accuracy = true_positives / 10000
+    normalized_accuracy = true_unknowns / (true_unknowns + false_unknowns)
+    return accuracy, normalized_accuracy
+
 if __name__ == "__main__": # pragma: no 1cover
 
     # Define some fixed variables
