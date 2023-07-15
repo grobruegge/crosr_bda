@@ -224,68 +224,30 @@ def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
 
     return table
 
-def calc_tp_fu(splitList_in_dist, num_class):
+def save_scores_to_pickle(args, file_name, w_scores_id, w_scores_ood, in_dist_openmax_scores, open_set_openmax_scores):
+    if args.save_w_scores:
+        with open(os.path.join('data', 'plot_pickles', f'w_scores_{file_name}.pickle'), 'wb') as f:
+            pickle.dump(w_scores_id + w_scores_ood, f)
 
-    tp = 0
-    fu = 0
+    if args.save_openmax_scores:
+        with open(os.path.join('data', 'plot_pickles', f'openmax_scores_{file_name}.pickle'), 'wb') as f:
+            pickle.dump(np.array(in_dist_openmax_scores + open_set_openmax_scores), f)
 
-    max_indices = []
-    for prediction in splitList_in_dist:
-        max_index = np.argmax(prediction)
-        max_indices.append(max_index)
-
-    for entry in max_indices:
-        if entry == num_class:
-            tp += 1
-        elif entry == 10:
-            fu += 1
-
-    return tp, fu
-
-
-def calc_tu(open_set_openmax_scores):
-
-    tu = 0
-
-    max_indices = []
-    for prediction in open_set_openmax_scores:
-        max_index = np.argmax(prediction)
-        max_indices.append(max_index)
-
-    for entry in max_indices:
-        if entry == 10:
-            tu += 1
-
-    return tu
-
-def calculate_acc_extAcc(in_dist_openmax_scores, open_set_openmax_scores):
-
-    splitList_in_dist = split_list(in_dist_openmax_scores, 1000)
-    true_positives = 0
-    false_unknowns = 0
-    true_unknowns = 0
-
-    true_unknowns += calc_tu(open_set_openmax_scores)
-
-    for c in range(0, 11):
-        if c < 10:
-            tp, fu = calc_tp_fu(splitList_in_dist[c], c)
-            true_positives += tp
-            false_unknowns += fu
-
-    accuracy = true_positives / 10000
-    normalized_accuracy = true_unknowns / (true_unknowns + false_unknowns)
-    return accuracy, normalized_accuracy
-
-if __name__ == "__main__": # pragma: no 1cover
-
-    # Define some fixed variables
+def define_fixed_variables():
     DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     NUM_CLASSES = 10
     BATCHSIZE = 1
     MEANS = [0.4914, 0.4822, 0.4465]
     STDS = [0.2023, 0.1994, 0.2010]
     TAIL_SIZE_WD = 100
+
+    return DEVICE, NUM_CLASSES, BATCHSIZE, MEANS, STDS, TAIL_SIZE_WD
+
+if __name__ == "__main__": # pragma: no 1cover
+
+    # Define some fixed variables
+    variables = define_fixed_variables()
+    DEVICE, NUM_CLASSES, BATCHSIZE, MEANS, STDS, TAIL_SIZE_WD = variables
 
     parser = argparse.ArgumentParser(description='Get activation vectors')
     # We can compute the features in different ways, e.g., using MaxPooling, AvgPooling or not considering the latent repr.
@@ -407,13 +369,7 @@ if __name__ == "__main__": # pragma: no 1cover
     # file name to save plots and scores
     file_name = f'{args.feature_suffix}_{TAIL_SIZE_WD}_{"softmax_before" if args.apply_softmax_before else "softmax_after"}'
 
-    if args.save_w_scores:
-        with open(os.path.join('data', 'plot_pickles', f'w_scores_{file_name}.pickle'), 'wb') as f:
-            pickle.dump(w_scores_id+w_scores_ood, f)
-
-    if args.save_openmax_scores:
-        with open(os.path.join('data', 'plot_pickles', f'openmax_scores_{file_name}.pickle'), 'wb') as f:
-            pickle.dump(np.array(in_dist_openmax_scores+open_set_openmax_scores), f)
+    save_scores_to_pickle(args, file_name, w_scores_id, w_scores_ood, in_dist_openmax_scores, open_set_openmax_scores)
 
     # filter out the outlying class probabilit
     in_dist_om_class = [om[-1] for om in in_dist_openmax_scores]

@@ -1,3 +1,5 @@
+import pickle
+from unittest.mock import MagicMock
 import torch
 import torchvision as torchvision
 from torch.utils.data import DataLoader, TensorDataset
@@ -5,7 +7,6 @@ from unittest import TestCase
 import unittest
 import numpy as np
 from numpy.testing import assert_array_equal
-import compute_openmax
 import train_dhr_nn
 from torch.optim import SGD
 from torchvision.datasets import CIFAR10
@@ -16,10 +17,11 @@ import argparse
 from compute_openmax import compute_mean_activation_vector, compute_distances, calc_metrics
 import os
 import compute_openmax
-from compute_openmax import compute_mean_activation_vector, calc_tu, calc_tp_fu, calculate_acc_extAcc, compute_distances
+from unittest.mock import patch
+import random
 import libmr
 from torch.utils.data import Dataset
-
+import matplotlib.pyplot as plt
 
 class TestModelInitialization(unittest.TestCase):
     def test_model_initialization(self):
@@ -35,6 +37,86 @@ class TestModelInitialization(unittest.TestCase):
         self.assertEqual(model.num_classes, num_classes)
         self.assertEqual(next(model.parameters()).device, device)
         self.assertFalse(model.training)
+class TestSaveScoresToPickle(unittest.TestCase):
+    def test_save_scores_to_pickle(self):
+        args = MagicMock(save_w_scores=True, save_openmax_scores=True)
+        file_name = "test_file"
+        w_scores_id = [1, 2, 3]
+        w_scores_ood = [4, 5, 6]
+        in_dist_openmax_scores = [0.1, 0.2, 0.3]
+        open_set_openmax_scores = [0.4, 0.5, 0.6]
+
+        compute_openmax.save_scores_to_pickle(args, file_name, w_scores_id, w_scores_ood, in_dist_openmax_scores, open_set_openmax_scores)
+
+        # Assert that w_scores.pickle file was created and contains the expected data
+        w_scores_file_path = os.path.join('data', 'plot_pickles', f'w_scores_{file_name}.pickle')
+        self.assertTrue(os.path.exists(w_scores_file_path))
+        with open(w_scores_file_path, 'rb') as f:
+            saved_w_scores = pickle.load(f)
+        expected_w_scores = w_scores_id + w_scores_ood
+        self.assertEqual(saved_w_scores, expected_w_scores)
+
+        # Assert that openmax_scores.pickle file was created and contains the expected data
+        openmax_scores_file_path = os.path.join('data', 'plot_pickles', f'openmax_scores_{file_name}.pickle')
+        self.assertTrue(os.path.exists(openmax_scores_file_path))
+        with open(openmax_scores_file_path, 'rb') as f:
+            saved_openmax_scores = pickle.load(f)
+        expected_openmax_scores = np.array(in_dist_openmax_scores + open_set_openmax_scores)
+        np.testing.assert_array_equal(saved_openmax_scores, expected_openmax_scores)
+
+        # Clean up the created pickle files
+        os.remove(w_scores_file_path)
+        os.remove(openmax_scores_file_path)
+class TestSetupEnvironment(unittest.TestCase):
+    @patch('builtins.print')  # Mock print function
+    def test_setup_environment(self, mock_print):
+        with patch.object(torch, 'manual_seed') as mock_torch_manual_seed:
+            with patch.object(random, 'seed') as mock_random_seed:
+                with patch.object(np.random, 'seed') as mock_np_random_seed:
+                    expected_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+                    expected_seed = 22
+                    expected_lr = 0.05
+                    expected_epochs = 500
+                    expected_batch_size = 128
+                    expected_momentum = 0.9
+                    expected_weight_decay = 0.0005
+                    expected_means = [0.4914, 0.4822, 0.4465]
+                    expected_stds = [0.2023, 0.1994, 0.2010]
+                    expected_num_classes = 10
+
+                    device, lr, epochs, batch_size, momentum, weight_decay, means, stds, num_classes = train_dhr_nn.setup_environment()
+
+                    mock_print.assert_called_once_with(expected_device)
+                    mock_torch_manual_seed.assert_called_once_with(expected_seed)
+                    mock_random_seed.assert_called_once_with(expected_seed)
+                    mock_np_random_seed.assert_called_once_with(expected_seed)
+
+                    self.assertEqual(device, expected_device)
+                    self.assertEqual(lr, expected_lr)
+                    self.assertEqual(epochs, expected_epochs)
+                    self.assertEqual(batch_size, expected_batch_size)
+                    self.assertEqual(momentum, expected_momentum)
+                    self.assertEqual(weight_decay, expected_weight_decay)
+                    self.assertEqual(means, expected_means)
+                    self.assertEqual(stds, expected_stds)
+                    self.assertEqual(num_classes, expected_num_classes)
+class TestDefineFixedVariables(unittest.TestCase):
+    def test_define_fixed_variables(self):
+        expected_DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        expected_NUM_CLASSES = 10
+        expected_BATCHSIZE = 1
+        expected_MEANS = [0.4914, 0.4822, 0.4465]
+        expected_STDS = [0.2023, 0.1994, 0.2010]
+        expected_TAIL_SIZE_WD = 100
+
+        DEVICE, NUM_CLASSES, BATCHSIZE, MEANS, STDS, TAIL_SIZE_WD = compute_openmax.define_fixed_variables()
+
+        self.assertEqual(DEVICE, expected_DEVICE)
+        self.assertEqual(NUM_CLASSES, expected_NUM_CLASSES)
+        self.assertEqual(BATCHSIZE, expected_BATCHSIZE)
+        self.assertEqual(MEANS, expected_MEANS)
+        self.assertEqual(STDS, expected_STDS)
+        self.assertEqual(TAIL_SIZE_WD, expected_TAIL_SIZE_WD)
 class TestFitWeibullDistribution(unittest.TestCase):
     def test_fit_weibull_distribution(self):
         # Example distances for class 0 and 1
@@ -79,7 +161,6 @@ class TestComputeMeanActivationVector(unittest.TestCase):
         # Compare the expected result with the actual result
         for key in result:
             assert_array_equal(result[key], expected_result[key])
-
 class TestComputeActivationVector(unittest.TestCase):
 
     def setUp(self):
@@ -131,7 +212,6 @@ class TestComputeActivationVector(unittest.TestCase):
             # Delete the file
             os.remove(file_path)
             print(f"The file {file_path} has been deleted.")
-
 class Testtest_epoch_train(TestCase):
     def test_epoch_train(self):
         # Set up the full dataset
@@ -164,7 +244,6 @@ class Testtest_epoch_train(TestCase):
         assert total_loss >= 0.0, "Total loss should be non-negative"
 
         print("Unit test passed.")
-
 class EpochValTest(unittest.TestCase):
     def test_epoch_val(self):
         # Define the test data
@@ -201,7 +280,6 @@ class EpochValTest(unittest.TestCase):
         self.assertIsInstance(result[1], float)  # Check if the classification loss is a float
         self.assertIsInstance(result[2], float)  # Check if the reconstruction loss is a float
         self.assertIsInstance(result[3], float)  # Check if the total loss is a float
-
 class DHRNetTest(unittest.TestCase):
     def test_dhrnet(self):
         # Define the test data
@@ -219,7 +297,6 @@ class DHRNetTest(unittest.TestCase):
         # Perform assertions on the output
         self.assertEqual(logits.shape, (1, num_classes))  # Check the shape of the logits
         self.assertEqual(reconstruct.shape, (1, 3, 32, 32))  # Check the shape of the reconstructed tensor
-
 class TestComputeOpenmax(unittest.TestCase):
     def test_compute_openmax(self):
         #calulate mrs with example distances
@@ -257,7 +334,6 @@ class TestComputeOpenmax(unittest.TestCase):
 
         # Assert the expected behavior
         self.assertEqual(len(openmax_probs), len(avs))
-
 class ComputeMeanActivationVectorTest(unittest.TestCase):
 
     def setUp(self):
@@ -276,8 +352,6 @@ class ComputeMeanActivationVectorTest(unittest.TestCase):
         mavs = compute_mean_activation_vector(self.avs, self.num_classes)
         for c in range(self.num_classes):
             np.testing.assert_allclose(mavs[c], expected_mavs[c], rtol=1e-4)
-
-
 class ComputeDistancesTest(unittest.TestCase):
 
     def test_compute_distances(self):
@@ -306,8 +380,6 @@ class ComputeDistancesTest(unittest.TestCase):
 
         for c in range(num_classes):
             self.assertAlmostEqual(distances[c], expected_distances[c], places=6)
-
-
 class CalcMetricsTestCase(unittest.TestCase):
     def test_calc_metrics(self):
         # Mock input data
@@ -346,103 +418,6 @@ class CalcMetricsTestCase(unittest.TestCase):
 
         # Assert the result
         self.assertMultiLineEqual(table.strip(), expected_table.strip())
-
-class ComputeMeanActivationVectorTest(unittest.TestCase):
-
-    def setUp(self):
-        # Set up sample inputs for testing
-        self.avs = {
-            0: [np.array([0.2, 0.5, 0.3, 0.1]), np.array([0.1, 0.3, 0.6, 0.2])],
-            1: [np.array([0.4, 0.1, 0.2, 0.5]), np.array([0.3, 0.2, 0.5, 0.4])]
-        }
-        self.num_classes = 2
-
-    def test_compute_mean_activation_vector(self):
-        expected_mavs = {
-            0: np.array([0.15, 0.4, 0.45, 0.15]),
-            1: np.array([0.35, 0.15, 0.35, 0.45])
-        }
-        mavs = compute_mean_activation_vector(self.avs, self.num_classes)
-        for c in range(self.num_classes):
-            np.testing.assert_allclose(mavs[c], expected_mavs[c], rtol=1e-4)
-
-
-class ComputeDistancesTest(unittest.TestCase):
-
-    def test_compute_distances(self):
-        mavs = {
-            0: [1.0, 2.0, 3.0],
-            1: [4.0, 5.0, 6.0]
-        }
-        avs = {
-            0: [
-                [0.5, 1.5, 2.5],
-                [1.5, 2.5, 3.5]
-            ],
-            1: [
-                [3.5, 4.5, 5.5],
-                [4.5, 5.5, 6.5]
-            ]
-        }
-        num_classes = 2
-
-        expected_distances = {
-            0: [0.8660254037844386, 0.8660254037844386],
-            1: [0.8660254037844386, 0.8660254037844386]
-        }
-
-        distances = compute_distances(mavs, avs, num_classes)
-
-        for c in range(num_classes):
-            self.assertAlmostEqual(distances[c], expected_distances[c], places=6)
-
-class CalcTpFuTest(unittest.TestCase):
-
-    def test_calc_tp_fu(self):
-        splitList_in_dist = [
-            [0.1, 0.2, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.9, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8]
-        ]
-        num_class = 3
-
-        tp, fu = calc_tp_fu(splitList_in_dist, num_class)
-
-        self.assertEqual(tp, 1)
-        self.assertEqual(fu, 1)
-
-class CalcTuTest(unittest.TestCase):
-
-    def test_calc_tu(self):
-        open_set_openmax_scores = [
-            [0.1, 0.2, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.9, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8]
-        ]
-
-        tu = calc_tu(open_set_openmax_scores)
-
-        self.assertEqual(tu, 1)
-
-@unittest.skip("Unsufficient amount of Data")
-class CalculateAccExtAccTest(unittest.TestCase):
-
-    def test_calculate_acc_extAcc(self):
-        in_dist_openmax_scores = [
-            [0.1, 0.2, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.9, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8]
-        ]
-        open_set_openmax_scores = [
-            [0.1, 0.2, 0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.9, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8]
-        ]
-
-        accuracy, normalized_accuracy = calculate_acc_extAcc(in_dist_openmax_scores, open_set_openmax_scores)
-
-        self.assertAlmostEqual(accuracy, 0.0002, delta=1e-5)
-        self.assertAlmostEqual(normalized_accuracy, 0.5, delta=1e-5)
 
 
 if __name__ == '__main__':

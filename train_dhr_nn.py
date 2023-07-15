@@ -192,8 +192,7 @@ def epoch_val(net,device,testloader):
 
     return [(100 * (correct / total)), (total_cls_loss/iter), (total_reconst_loss/iter), (total_loss/iter)]
 
-if __name__ == "__main__": # pragma: no 1cover
-
+def setup_environment():
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(device)
 
@@ -205,12 +204,21 @@ if __name__ == "__main__": # pragma: no 1cover
     lr = 0.05
     epochs = 500
     batch_size = 128
-    momentum= 0.9
-    weight_decay= 0.0005
+    momentum = 0.9
+    weight_decay = 0.0005
     means = [0.4914, 0.4822, 0.4465]
     stds = [0.2023, 0.1994, 0.2010]
 
     num_classes = 10
+
+    return device, lr, epochs, batch_size, momentum, weight_decay, means, stds, num_classes
+
+if __name__ == "__main__": # pragma: no 1cover
+
+
+    settings = setup_environment()
+    device, lr, epochs, batch_size, momentum, weight_decay, means, stds, num_classes = settings
+
     print("Num classes "+str(num_classes))
 
     transform_train = transforms.Compose([
@@ -265,7 +273,7 @@ if __name__ == "__main__": # pragma: no 1cover
         test_acc = epoch_val(net,device,testloader)
         scheduler.step()
         print("Train accuracy and cls, reconstruct and total loss for epoch "+
-            str(epoch)+" is "+str(train_acc))       
+            str(epoch)+" is "+str(train_acc))
         print("Test accuracy and cls, reconstruct and total loss for epoch "+
             str(epoch)+" is "+str(test_acc))
 
