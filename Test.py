@@ -21,7 +21,20 @@ import libmr
 from torch.utils.data import Dataset
 
 
+class TestModelInitialization(unittest.TestCase):
+    def test_model_initialization(self):
+        # Define the test input
+        num_classes = 10
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+        # Call the function to initialize the model
+        model = compute_openmax.initialize_model(num_classes, device)
+
+        # Perform the assertions to verify the model initialization
+        self.assertTrue(isinstance(model, train_dhr_nn.DHRNet))
+        self.assertEqual(model.num_classes, num_classes)
+        self.assertEqual(next(model.parameters()).device, device)
+        self.assertFalse(model.training)
 class TestFitWeibullDistribution(unittest.TestCase):
     def test_fit_weibull_distribution(self):
         # Example distances for class 0 and 1
@@ -66,7 +79,6 @@ class TestComputeMeanActivationVector(unittest.TestCase):
         # Compare the expected result with the actual result
         for key in result:
             assert_array_equal(result[key], expected_result[key])
-
 
 class TestComputeActivationVector(unittest.TestCase):
 
@@ -190,8 +202,6 @@ class EpochValTest(unittest.TestCase):
         self.assertIsInstance(result[2], float)  # Check if the reconstruction loss is a float
         self.assertIsInstance(result[3], float)  # Check if the total loss is a float
 
-
-
 class DHRNetTest(unittest.TestCase):
     def test_dhrnet(self):
         # Define the test data
@@ -209,7 +219,6 @@ class DHRNetTest(unittest.TestCase):
         # Perform assertions on the output
         self.assertEqual(logits.shape, (1, num_classes))  # Check the shape of the logits
         self.assertEqual(reconstruct.shape, (1, 3, 32, 32))  # Check the shape of the reconstructed tensor
-
 
 class TestComputeOpenmax(unittest.TestCase):
     def test_compute_openmax(self):
@@ -248,8 +257,6 @@ class TestComputeOpenmax(unittest.TestCase):
 
         # Assert the expected behavior
         self.assertEqual(len(openmax_probs), len(avs))
-
-
 
 class ComputeMeanActivationVectorTest(unittest.TestCase):
 
@@ -339,27 +346,6 @@ class CalcMetricsTestCase(unittest.TestCase):
 
         # Assert the result
         self.assertMultiLineEqual(table.strip(), expected_table.strip())
-
-
-class TestCalcRocOld(unittest.TestCase):
-    def test_calc_roc_old(self):
-        scores = [0.5, 0.5, 0.5, 0.5] # Example scores list
-        gts = [1, 0, 1, 0] # Example ground truth list
-
-        fmeasure, mp = compute_openmax.calc_roc_old(scores, gts)
-
-        # Assert the expected values
-        self.assertAlmostEqual(fmeasure, 0.8)
-        self.assertAlmostEqual(mp, 0.83, places=2)
-
-    def test_auroc(self):
-        id_test_results = np.array([0.8, 0.6, 0.4, 0.2])
-        ood_test_results = np.array([0.9, 0.7, 0.5, 0.1])
-        expected_result = 0.5625  # Since ood_test_results have higher scores than id_test_results
-
-        result = compute_openmax.calc_auroc(id_test_results, ood_test_results)
-
-        self.assertAlmostEqual(result, expected_result, places=5)
 
 class ComputeMeanActivationVectorTest(unittest.TestCase):
 

@@ -14,6 +14,16 @@ from matplotlib import pyplot as plt
 import argparse
 from tabulate import tabulate
 
+
+def initialize_model(num_classes, device):
+    # Initialize Deep Hierarchical Network from weights
+    model = DHRNet(num_classes) # Initialize DHR Net from pre-defined architecture
+    checkpoint = torch.load("./dhr_net.pt", map_location=torch.device(device))
+    model.load_state_dict(checkpoint['model_state_dict']) # Load pre-trained weights (change path if necessary)
+    model.to(device) # put model to device
+    model.eval() # set Model to eval-mode (gradients are disabled)
+    return model
+
 def compute_activation_vector(args, model, dataloader, device, pooling=AdaptiveMaxPool2d((1,1)), mode="train"):
 
     # initialize a dictionary to store the activation vectors (AV) for each class
@@ -288,11 +298,7 @@ if __name__ == "__main__": # pragma: no 1cover
     args = parser.parse_args()
 
     # Initialize Deep Hierarchical Network from weights
-    model = DHRNet(NUM_CLASSES) # Initialize DHR Net from pre-defined architecture
-    checkpoint = torch.load("./dhr_net.pt", map_location=torch.device(DEVICE))
-    model.load_state_dict(checkpoint['model_state_dict']) # Load pre-trained weights (change path if necessary)
-    model.to(DEVICE) # put model to device
-    model.eval() # set Model to eval-mode (gradients are disabled)
+    model = initialize_model(NUM_CLASSES, DEVICE)
 
     # transformation applied on images
     transform = transforms.Compose([
