@@ -4,6 +4,19 @@ This repository aims to provide a lightweighted pytorch implementation of the Cl
 
 ## Installation
 
+### Ready-to-use shell-script
+
+To install all packages and download the outyling dataset, you can simply run 
+
+```sh
+chmod +x setup.sh 
+source setup.sh
+```
+
+This will execute a shell-script which handles the whole setup. If anything goes wrong, you can look at the steps below. Especially `LibMR` tends to produce problems, so you might have to install it manually (see below).
+
+Note that `PyTorch` is only installed for CPU-usage, so if you want to train the DHR-Network and have a GPU available, you might want to install the GPU-compatible version of `PyTorch`.
+
 ### Packages
 
 To get started, the following packages are required:
@@ -12,8 +25,10 @@ To get started, the following packages are required:
 - Numpy
 - SciPy
 - SKlearn
+- Tabulate
+- Tqdm
 
-You can install them using either pip or conda or whatever. It it recommended to use a virtual environment.
+All packages are specified in `requirements.txt`. You can install them using either pip or conda or whatever. It it recommended to use a virtual environment.
 
 Additionally, this repository requires LibMR for some stuff. This libary unfortunally does not come out-of-the-box, but you can install with the following steps:
 
@@ -40,7 +55,15 @@ There are only two scripts so the usage is pretty straight forward:
 
 This repository also provides pre-trained weights: `dhr_net.pt`
 
+```sh
+python train_dhr_nn.py
+```
+
 `compute_openmax`: The Mean Actiation Vectors (MAV) and distances to those are calculated and used to fit the Meta-Recognition System (MRS) consisting of the Weibull distributions. This is then used to implement the OpenMax framework.
+
+```sh
+python compute_openmax.py
+```
 
 ## Conclusions
 
