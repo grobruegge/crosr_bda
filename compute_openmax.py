@@ -14,6 +14,21 @@ import argparse
 from tabulate import tabulate
 
 def compute_activation_vector(args, model, dataloader, device, pooling=AdaptiveMaxPool2d((1,1)), mode="train"):
+    """
+    Computes activation vectors for a model based on the input data from the dataloader.
+
+    Args:
+        args (object): A collection of arguments or settings for the function.
+        model (torch.nn.Module): The model for which activation vectors are to be computed.
+        dataloader (torch.utils.data.DataLoader): A dataloader object providing the input data for the model.
+        device (torch.device): The device on which the computations should be performed (e.g., 'cuda' for GPU or 'cpu' for CPU).
+        pooling (torch.nn.Module, optional): A pooling module applied to the latent layers to form the activation vectors. By default, `AdaptiveMaxPool2d((1,1))` is used.
+        mode (str, optional): The mode in which the function is executed. By default, it is set to "train".
+
+    Returns:
+        dict: A dictionary containing the activation vectors for each class.
+
+    """
 
     # initialize a dictionary to store the activation vectors (AV) for each class
     avs = {i: [] for i in range(model.num_classes)}
@@ -68,6 +83,17 @@ def compute_activation_vector(args, model, dataloader, device, pooling=AdaptiveM
     return avs
 
 def compute_mean_activation_vector(avs, num_classes):
+    """
+    Computes the mean activation vectors for each class based on the provided activation vectors.
+
+    Args:
+        avs (dict): A dictionary containing the activation vectors for each class.
+        num_classes (int): The total number of classes.
+
+    Returns:
+        dict: A dictionary containing the mean activation vectors for each class.
+
+    """
 
     # dictionary that contains the mean actication vectors for each class
     mavs = {i: None for i in range(num_classes)} 
@@ -79,6 +105,18 @@ def compute_mean_activation_vector(avs, num_classes):
     return mavs
 
 def compute_distances(mavs, avs, num_classes):
+    """
+    Computes the Euclidean distances between the activation vectors and the mean activation vectors for each class.
+
+    Args:
+        mavs (dict): A dictionary containing the mean activation vectors for each class.
+        avs (dict): A dictionary containing the activation vectors for each class.
+        num_classes (int): The total number of classes.
+
+    Returns:
+        dict: A dictionary containing the Euclidean distances between the activation vectors and the mean activation vectors for each class.
+
+    """
 
     # dictionary that stores the eucledean distance between the activation vectors and the mean of all classes
     distances = {i: [] for i in range(num_classes)} 
@@ -92,6 +130,18 @@ def compute_distances(mavs, avs, num_classes):
     return distances
 
 def fit_weibull_distribution(distances, tail_size, num_classes):
+    """
+    Fits the Weibull distribution to the given distances for each class to create a "meta-recognition system" (MRS).
+
+    Args:
+       distances (dict): A dictionary containing the Euclidean distances between the activation vectors and the mean activation vectors for each class.
+       tail_size (int): The size of the tail used for fitting the Weibull distribution.
+       num_classes (int): The total number of classes.
+
+    Returns:
+       dict: A dictionary containing the fitted Weibull distribution (meta-recognition system) for each class.
+
+    """
 
     # dictionary that contains the so-called "meta-recognition system" (MRS) for each class
     mrs = {i: libmr.MR() for i in range(num_classes)} 
@@ -107,6 +157,21 @@ def fit_weibull_distribution(distances, tail_size, num_classes):
     return mrs
 
 def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=10):
+    """
+    Computes the OpenMax probabilities and the w-scores for each sample based on the given meta-recognition system (MRS), mean activation vectors (MAVs), and activation vectors (AVs).
+
+    Args:
+        mrs (dict): A dictionary containing the fitted Weibull distribution (meta-recognition system) for each class.
+        mavs (dict): A dictionary containing the mean activation vectors for each class.
+        avs (dict): A dictionary containing the activation vectors for each class.
+        num_classes (int): The total number of classes.
+        apply_softmax (bool, optional): Flag indicating whether to apply softmax on the logits before computing OpenMax probabilities. By default, it is set to True.
+        alpharank (int, optional): The rank used to calculate the alpha weights for the OpenMax scores. By default, it is set to 10.
+
+    Returns:
+        tuple: A tuple containing the OpenMax probabilities and the w-scores for each sample.
+
+    """
     
     w_scores_and_logits = []
     openmax_probs = []
@@ -160,6 +225,19 @@ def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=1
     return openmax_probs, w_scores_and_logits
 
 def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
+    """
+    Calculates various evaluation metrics including False Positive Rates (FPR), True Positive Rates (TPR),
+    thresholds, Area Under the Receiver Operating Characteristic curve (AUROC), Youden's J-statistic, optimal
+    cut-off thresholds, F1-Score, and Accuracy for each class.
+
+    Args:
+        in_dist_openmax_scores (list): A list of in-distribution OpenMax scores for each class.
+        open_set_openmax_scores (list): A list of open-set OpenMax scores for each class.
+
+    Returns:
+        str: A formatted table displaying the evaluation metrics for each class.
+
+    """
     
     fpr = dict() # False-Positive-Rates (FPR) for each class
     tpr = dict() # True Positive-Rates (TPR) for each class
