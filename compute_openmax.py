@@ -91,7 +91,7 @@ def compute_mean_activation_vector(avs, num_classes):
         num_classes (int): The total number of classes.
 
     Returns:
-        dict: A dictionary containing the mean activation vectors for each class.
+        dict: A dictionary containing the mean activation vector for each class.
 
     """
 
