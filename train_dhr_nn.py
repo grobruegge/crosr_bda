@@ -9,8 +9,13 @@ import numpy as np
 from tqdm import tqdm
 
 class DHRNet(nn.Module):
-
+    """
+    Calss to construct and train the DHRNET
+    """
     def __init__(self,num_classes):
+        """
+        construct the DHRNET
+        """
         super().__init__()
         self.num_classes = num_classes
 
@@ -65,6 +70,9 @@ class DHRNet(nn.Module):
         self.deconv3 = nn.ConvTranspose2d(256,128,kernel_size=2,stride=2,padding=0)
     
     def forward(self,x):
+        """
+        calculate net forward
+        """
 
         x1 = F.relu(self.bn1_1(self.conv1_1(x)))
         x1 = F.relu(self.bn1_2(self.conv1_2(x1)))
@@ -105,6 +113,9 @@ class DHRNet(nn.Module):
         return x5, g0, [z3, z2, z1] #torch.concat([z3, z2, z1], dim = 0)
     
 def epoch_train(net,device,trainloader,optimizer):
+    """
+    epoch for training
+    """
         
     net.train() 
     correct=0
@@ -156,6 +167,9 @@ def epoch_train(net,device,trainloader,optimizer):
     return [(100 * (correct / total)), (total_cls_loss/iter), (total_reconst_loss/iter), (total_loss/iter)]
 
 def epoch_val(net,device,testloader):
+    """
+    epoch for validation
+    """
 
     net.eval()
     correct = 0
@@ -193,6 +207,9 @@ def epoch_val(net,device,testloader):
     return [(100 * (correct / total)), (total_cls_loss/iter), (total_reconst_loss/iter), (total_loss/iter)]
 
 def setup_environment():
+    """
+    sets up all fix  variables
+    """
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(device)
 
@@ -213,57 +230,65 @@ def setup_environment():
 
     return device, lr, epochs, batch_size, momentum, weight_decay, means, stds, num_classes
 
-if __name__ == "__main__": # pragma: no 1cover
 
-
-    settings = setup_environment()
-    device, lr, epochs, batch_size, momentum, weight_decay, means, stds, num_classes = settings
-
-    print("Num classes "+str(num_classes))
+def loadData():
+    """
+    loads the Data needed for Training
+    """
+    device, lr, epochs, batch_size, momentum, weight_decay, means, stds, num_classes = setup_environment()
 
     transform_train = transforms.Compose([
         transforms.ColorJitter(brightness=0.5, hue=0.3),
-        transforms.RandomAffine(degrees=30,translate =(0.2,0.2),scale=(0.75,1.0)),
+        transforms.RandomAffine(degrees=30, translate=(0.2, 0.2), scale=(0.75, 1.0)),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(means,stds),
+        transforms.Normalize(means, stds),
     ])
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(means,stds),
+        transforms.Normalize(means, stds),
     ])
 
     trainset = torchvision.datasets.CIFAR10(
-        root='./data', 
+        root='./data',
         train=True,
-        download=True, 
+        download=True,
         transform=transform_train
     )
     trainloader = torch.utils.data.DataLoader(
-        trainset, 
+        trainset,
         batch_size=batch_size,
-        shuffle=False, 
+        shuffle=False,
         num_workers=2
     )
 
     testset = torchvision.datasets.CIFAR10(
-        root='./data', 
+        root='./data',
         train=False,
-        download=True, 
+        download=True,
         transform=transform_test
     )
     testloader = torch.utils.data.DataLoader(
-        testset, 
+        testset,
         batch_size=batch_size,
-        shuffle=False, 
+        shuffle=False,
         num_workers=2
     )
+    return trainloader, testloader
+
+if __name__ == "__main__": # pragma: 1no cover
+
+    device, lr, epochs, batch_size, momentum, weight_decay, means, stds, num_classes = setup_environment()
+    #print("Num classes "+str(num_classes))
+
+    #get Data
+    trainloader, testloader = loadData()
 
     net = DHRNet(num_classes)
     net.to(device)
 
-    optimizer = optim.SGD(net.parameters(), lr=lr, 
+    optimizer = optim.SGD(net.parameters(), lr=lr,
                         momentum=momentum,weight_decay=weight_decay)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
 

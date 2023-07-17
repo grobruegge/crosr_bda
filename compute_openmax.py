@@ -16,6 +16,10 @@ from tabulate import tabulate
 
 
 def initialize_model(num_classes, device):
+    """
+      initialize the trained model from train_dhr_nn
+    """
+
     # Initialize Deep Hierarchical Network from weights
     model = DHRNet(num_classes) # Initialize DHR Net from pre-defined architecture
     checkpoint = torch.load("./dhr_net.pt", map_location=torch.device(device))
@@ -225,6 +229,9 @@ def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
     return table
 
 def save_scores_to_pickle(args, file_name, w_scores_id, w_scores_ood, in_dist_openmax_scores, open_set_openmax_scores):
+    """
+       safe scores via pickle
+    """
     if args.save_w_scores:
         with open(os.path.join('data', 'plot_pickles', f'w_scores_{file_name}.pickle'), 'wb') as f:
             pickle.dump(w_scores_id + w_scores_ood, f)
@@ -234,6 +241,9 @@ def save_scores_to_pickle(args, file_name, w_scores_id, w_scores_ood, in_dist_op
             pickle.dump(np.array(in_dist_openmax_scores + open_set_openmax_scores), f)
 
 def define_fixed_variables():
+    """
+       defines fixed variables
+    """
     DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     NUM_CLASSES = 10
     BATCHSIZE = 1
@@ -243,24 +253,12 @@ def define_fixed_variables():
 
     return DEVICE, NUM_CLASSES, BATCHSIZE, MEANS, STDS, TAIL_SIZE_WD
 
-if __name__ == "__main__": # pragma: no 1cover
 
-    # Define some fixed variables
-    variables = define_fixed_variables()
-    DEVICE, NUM_CLASSES, BATCHSIZE, MEANS, STDS, TAIL_SIZE_WD = variables
-
-    parser = argparse.ArgumentParser(description='Get activation vectors')
-    # We can compute the features in different ways, e.g., using MaxPooling, AvgPooling or not considering the latent repr.
-    parser.add_argument('--feature_suffix',default='avgpool',type=str)
-    # We can either compute the SoftMax BEFORE the OpenMax calculation (as done in this paper) or AFTER the OpenMax calculation
-    # as done in the original paper of OpenMax
-    parser.add_argument('--apply_softmax_before',action='store_true')
-    parser.add_argument('--save_openmax_scores',action='store_true')
-    parser.add_argument('--save_w_scores',action='store_true')
-    args = parser.parse_args()
-
-    # Initialize Deep Hierarchical Network from weights
-    model = initialize_model(NUM_CLASSES, DEVICE)
+def loadCIFAR10():
+    """
+       Loads CIFAR-10 Dataset
+    """
+    DEVICE, NUM_CLASSES, BATCHSIZE, MEANS, STDS, TAIL_SIZE_WD = define_fixed_variables()
 
     # transformation applied on images
     transform = transforms.Compose([
@@ -268,19 +266,103 @@ if __name__ == "__main__": # pragma: no 1cover
         transforms.Normalize(MEANS,STDS),
     ])
 
-    # load CIFAR-10 train dataset and create a dataloader
     trainset = datasets.CIFAR10(
-        root='./data', 
+        root='./data',
         train=True,
-        download=True, 
+        download=True,
         transform=transform
     )
     trainloader = torch.utils.data.DataLoader(
-        trainset, 
+        trainset,
         batch_size=BATCHSIZE,
-        shuffle=False, 
+        shuffle=False,
         num_workers=2
     )
+
+    testset = datasets.CIFAR10(
+        root='./data',
+        train=False,
+        download=True,
+        transform=transform
+    )
+    testloader = torch.utils.data.DataLoader(
+        testset,
+        batch_size=BATCHSIZE,
+        shuffle=False,
+        num_workers=2
+    )
+    return trainset, trainloader, testset, testloader
+
+
+def loadOutliers():
+    """
+       Loads Outlier Dataset
+    """
+    DEVICE, NUM_CLASSES, BATCHSIZE, MEANS, STDS, TAIL_SIZE_WD = define_fixed_variables()
+
+    # these transformation are only used for outlying datapoints and make sure they follow
+    # some basic constraints such as size (32x32) and have 3 channels
+    transform_outlier = transforms.Compose([
+        transforms.Resize(32),
+        transforms.ToTensor(),
+        transforms.Normalize(MEANS, STDS),
+        transforms.Lambda(lambda x: x.expand(3, -1, -1) if x.shape[0] == 1 else x)
+    ])
+
+    # load IMAGENET as outlying dataset from folder
+    # download the dataset from "https://www.dropbox.com/s/avgm2u562itwpkl/Imagenet.tar.gz" and put it into ./data/Imagenet
+    outlierset = datasets.ImageFolder(
+        root=os.path.join('data', 'Imagenet'),
+        transform=transform_outlier
+    )
+    outlierloader = torch.utils.data.DataLoader(
+        outlierset,
+        batch_size=BATCHSIZE,
+        shuffle=False,
+        num_workers=2
+    )
+    return outlierset, outlierloader
+
+
+def createplot(file_name, in_dist_om_class, open_set_om_class):
+    """
+       Creates a Plot
+    """
+
+    fig, ax = plt.subplots(figsize=(30, 15))
+    ax.scatter(range(len(in_dist_om_class)), in_dist_om_class, color='blue', label='in_dist_scores')
+    ax.scatter(range(len(in_dist_om_class), len(in_dist_om_class) + len(open_set_om_class)), open_set_om_class,
+               color='red', label='open_set_scores')
+    ax.set_xlabel('Index', fontsize=20)
+    ax.set_ylabel('Value', fontsize=20)
+    ax.tick_params(axis='y', labelsize=17)
+    ax.tick_params(axis='x', labelsize=17)
+    ax.set_title(f'OpenMax Scores of outlying class', fontsize=25)
+    ax.legend(fontsize=20)
+    plt.tight_layout()
+    plt.savefig(os.path.join('data', 'plots', f'openmax_scores_{file_name}.png'))
+
+
+if __name__ == "__main__": # pragma: no cover
+
+    # Define some fixed variables
+    DEVICE, NUM_CLASSES, BATCHSIZE, MEANS, STDS, TAIL_SIZE_WD = define_fixed_variables()
+
+    parser = argparse.ArgumentParser(description='Get activation vectors')
+    # We can compute the features in different ways, e.g., using MaxPooling, AvgPooling or not considering the latent repr.
+    parser.add_argument('--feature_suffix', default='avgpool', type=str)
+    # We can either compute the SoftMax BEFORE the OpenMax calculation (as done in this paper) or AFTER the OpenMax calculation
+    # as done in the original paper of OpenMax
+    parser.add_argument('--apply_softmax_before', action='store_true')
+    parser.add_argument('--save_openmax_scores', action='store_true')
+    parser.add_argument('--save_w_scores', action='store_true')
+    args = parser.parse_args()
+
+    # Initialize Deep Hierarchical Network from weights
+    model = initialize_model(NUM_CLASSES, DEVICE)
+
+    # load CIFAR-10 test dataset and create dataloader
+    trainset, trainloader, testset, testloader = loadCIFAR10()
 
     # Check if the JSON file exists in the current directory
     if os.path.isfile(os.path.join('data', 'features', f'avs_train_{args.feature_suffix}.pickle')):
@@ -292,7 +374,7 @@ if __name__ == "__main__": # pragma: no 1cover
         print("File 'avs_train.pickle' does not exist in the current directory. Computing...")
         # Compute the activation vectors for all images in the train dataset
         avs_train = compute_activation_vector(args, model, trainloader, DEVICE, mode="train")
-    
+
     # Compute the mean activation vector for all classes
     mavs = compute_mean_activation_vector(avs_train, NUM_CLASSES)
 
@@ -302,70 +384,38 @@ if __name__ == "__main__": # pragma: no 1cover
     # fit the weibull distribution (called meta-recognition system, MRS) for every class
     mrs = fit_weibull_distribution(distances, TAIL_SIZE_WD, NUM_CLASSES)
 
-    # load CIFAR-10 test dataset and create dataloader
-    testset = datasets.CIFAR10(
-        root='./data', 
-        train=False,
-        download=True, 
-        transform=transform
-    )
-    testloader = torch.utils.data.DataLoader(
-        testset, 
-        batch_size=BATCHSIZE,
-        shuffle=False, 
-        num_workers=2
-    )
-
     if os.path.isfile(os.path.join('data', 'features', f'avs_test_{args.feature_suffix}.pickle')):
         with open(os.path.join('data', 'features', f'avs_test_{args.feature_suffix}.pickle'), 'rb') as f:
             avs_test = pickle.load(f)
         print(f"loaded activation vectors for test data")
-    else: 
+    else:
         print("File 'avs_test.pickle' does not exist in the current directory. Computing...")
         # compute the AV for the test images
         avs_test = compute_activation_vector(args, model, testloader, DEVICE, mode="test")
 
-    # these transformation are only used for outlying datapoints and make sure they follow 
-    # some basic constraints such as size (32x32) and have 3 channels
-    transform_outlier = transforms.Compose([
-        transforms.Resize(32),
-        transforms.ToTensor(),
-        transforms.Normalize(MEANS,STDS),
-        transforms.Lambda(lambda x: x.expand(3, -1, -1) if x.shape[0] == 1 else x)
-    ])
-    
-    # load IMAGENET as outlying dataset from folder
-    # download the dataset from "https://www.dropbox.com/s/avgm2u562itwpkl/Imagenet.tar.gz" and put it into ./data/Imagenet 
-    outlierset = datasets.ImageFolder(
-        root=os.path.join('data', 'Imagenet'), 
-        transform=transform_outlier
-    )
-    outlierloader = torch.utils.data.DataLoader(
-        outlierset, 
-        batch_size=BATCHSIZE,
-        shuffle=False, 
-        num_workers=2
-    )
+    outlierset, outlierloader = loadOutliers()
 
     if os.path.isfile(os.path.join('data', 'features', f'avs_outlier_{args.feature_suffix}.pickle')):
         with open(os.path.join('data', 'features', f'avs_outlier_{args.feature_suffix}.pickle'), 'rb') as f:
             avs_outlier = pickle.load(f)
         print(f"loaded activation vectors for outlying data")
-    else: 
+    else:
         print("File 'avs_outlier.pickle' does not exist in the current directory. Computing...")
         avs_outlier = compute_activation_vector(args, model, outlierloader, DEVICE, mode="outlier")
 
-    # This function recalibrates the SoftMax scores and adds an editional unit for unkown probability and thus computes OpenMax 
+    # This function recalibrates the SoftMax scores and adds an editional unit for unkown probability and thus computes OpenMax
     # it returns the outlier probabilities (thus the additional class added by OpenMax) for each of the images
 
     # first compute the openmax scores for the test images (for CIPHAR-10 SHAPE=[10000, 11])
     # here we expect the last entry (outlying class score) to be close to 0, because no outliers
-    in_dist_openmax_scores, w_scores_id = compute_openmax(mrs, mavs, avs_test, NUM_CLASSES, apply_softmax=args.apply_softmax_before)
+    in_dist_openmax_scores, w_scores_id = compute_openmax(mrs, mavs, avs_test, NUM_CLASSES,
+                                                          apply_softmax=args.apply_softmax_before)
 
     # then compute the openmax scores for the outlying images (for CIPHAR-10 SHAPE=[10000, 11])
     # here we expect the last entry (outlying class score) to be close to 1, because this are outliers
-    open_set_openmax_scores, w_scores_ood = compute_openmax(mrs, mavs, avs_outlier, NUM_CLASSES, apply_softmax=args.apply_softmax_before)
-    
+    open_set_openmax_scores, w_scores_ood = compute_openmax(mrs, mavs, avs_outlier, NUM_CLASSES,
+                                                            apply_softmax=args.apply_softmax_before)
+
     # file name to save plots and scores
     file_name = f'{args.feature_suffix}_{TAIL_SIZE_WD}_{"softmax_before" if args.apply_softmax_before else "softmax_after"}'
 
@@ -376,19 +426,8 @@ if __name__ == "__main__": # pragma: no 1cover
     open_set_om_class = [om[-1] for om in open_set_openmax_scores]
 
     # Create a scatterplot to plot the outlying probability for test and outlying images
-    fig, ax = plt.subplots(figsize=(30, 15))
-    ax.scatter(range(len(in_dist_om_class)), in_dist_om_class, color='blue', label='in_dist_scores')
-    ax.scatter(range(len(in_dist_om_class), len(in_dist_om_class)+len(open_set_om_class)), open_set_om_class, color='red', label='open_set_scores')
-    ax.set_xlabel('Index', fontsize=20)
-    ax.set_ylabel('Value', fontsize=20)
-    ax.tick_params(axis='y', labelsize=17)
-    ax.tick_params(axis='x', labelsize=17)
-    ax.set_title(f'OpenMax Scores of outlying class', fontsize=25)
-    ax.legend(fontsize=20)
-    plt.tight_layout()
+    createplot(file_name, in_dist_om_class, open_set_om_class)
 
-    plt.savefig(os.path.join('data', 'plots', f'openmax_scores_{file_name}.png'))
+    # print result
+    print(calc_metrics(in_dist_openmax_scores, open_set_openmax_scores))
 
-    table = calc_metrics(in_dist_openmax_scores, open_set_openmax_scores)
-
-    print(table)
