@@ -15,10 +15,10 @@ from tabulate import tabulate
 
 def compute_activation_vector(args, model, dataloader, device, pooling=AdaptiveMaxPool2d((1,1)), mode="train"):
     """
-    Computes activation vectors for a model based on the input data from the dataloader.
+    Computes activation vectors (AV) from DHR-Network based on the input data from the dataloader.
 
     Args:
-        args (object): A collection of arguments or settings for the function.
+        args (object): A collection of arguments given my the user.
         model (torch.nn.Module): The model for which activation vectors are to be computed.
         dataloader (torch.utils.data.DataLoader): A dataloader object providing the input data for the model.
         device (torch.device): The device on which the computations should be performed (e.g., 'cuda' for GPU or 'cpu' for CPU).
@@ -84,14 +84,14 @@ def compute_activation_vector(args, model, dataloader, device, pooling=AdaptiveM
 
 def compute_mean_activation_vector(avs, num_classes):
     """
-    Computes the mean activation vectors for each class based on the provided activation vectors.
+    Computes the Mean Activation Vectors (MAV) for each class based on the provided activation vectors.
 
     Args:
         avs (dict): A dictionary containing the activation vectors for each class.
         num_classes (int): The total number of classes.
 
     Returns:
-        dict: A dictionary containing the mean activation vector for each class.
+        dict: A dictionary containing the Mean Activation Vectors (MAV) for each class.
 
     """
 
@@ -106,7 +106,7 @@ def compute_mean_activation_vector(avs, num_classes):
 
 def compute_distances(mavs, avs, num_classes):
     """
-    Computes the Euclidean distances between the activation vectors and the mean activation vectors for each class.
+    Computes the Euclidean distances between the activation vectors (AV) and the mean activation vectors (AV) for each class.
 
     Args:
         mavs (dict): A dictionary containing the mean activation vectors for each class.
@@ -158,7 +158,8 @@ def fit_weibull_distribution(distances, tail_size, num_classes):
 
 def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=10):
     """
-    Computes the OpenMax probabilities and the w-scores for each sample based on the given meta-recognition system (MRS), mean activation vectors (MAVs), and activation vectors (AVs).
+    Computes the w-scores for each sample w.r.t. each class based on the given meta-recognition system (MRS), mean activation vectors (MAVs), and activation vectors (AVs).
+    Based on the w-score, it computes the OpenMax probabilities.
 
     Args:
         mrs (dict): A dictionary containing the fitted Weibull distribution (meta-recognition system) for each class.
@@ -226,9 +227,8 @@ def compute_openmax(mrs, mavs, avs, num_classes, apply_softmax=True, alpharank=1
 
 def calc_metrics(in_dist_openmax_scores, open_set_openmax_scores):
     """
-    Calculates various evaluation metrics including False Positive Rates (FPR), True Positive Rates (TPR),
-    thresholds, Area Under the Receiver Operating Characteristic curve (AUROC), Youden's J-statistic, optimal
-    cut-off thresholds, F1-Score, and Accuracy for each class.
+    Calculates various evaluation metrics including Area Under the Receiver Operating Characteristic curve (AUROC), 
+    Youden's J-statistic, optimal cut-off thresholds based on the Youden's J-statistic, F1-Score, and Accuracy for each class.
 
     Args:
         in_dist_openmax_scores (list): A list of in-distribution OpenMax scores for each class.
