@@ -9,6 +9,42 @@ import numpy as np
 from tqdm import tqdm
 
 class DHRNet(nn.Module):
+    """
+    DHRNet is a custom neural network model.
+
+    Args:
+        num_classes (int): The number of classes for classification.
+
+    Attributes:
+        num_classes (int): The number of classes for classification.
+        conv1_1 (torch.nn.Conv2d): First convolutional layer.
+        bn1_1 (torch.nn.BatchNorm2d): Batch normalization layer.
+        conv1_2 (torch.nn.Conv2d): Second convolutional layer.
+        bn1_2 (torch.nn.BatchNorm2d): Batch normalization layer.
+        conv2_1 (torch.nn.Conv2d): Third convolutional layer.
+        bn2_1 (torch.nn.BatchNorm2d): Batch normalization layer.
+        conv2_2 (torch.nn.Conv2d): Fourth convolutional layer.
+        bn2_2 (torch.nn.BatchNorm2d): Batch normalization layer.
+        conv3_1 (torch.nn.Conv2d): Fifth convolutional layer.
+        bn3_1 (torch.nn.BatchNorm2d): Batch normalization layer.
+        conv3_2 (torch.nn.Conv2d): Sixth convolutional layer.
+        bn3_2 (torch.nn.BatchNorm2d): Batch normalization layer.
+        conv3_3 (torch.nn.Conv2d): Seventh convolutional layer.
+        bn3_3 (torch.nn.BatchNorm2d): Batch normalization layer.
+        btl1 (torch.nn.Conv2d): Bottleneck layer 1.
+        btlu1 (torch.nn.Conv2d): Bottleneck layer 1 (upscaling).
+        btl2 (torch.nn.Conv2d): Bottleneck layer 2.
+        btlu2 (torch.nn.Conv2d): Bottleneck layer 2 (upscaling).
+        btl3 (torch.nn.Conv2d): Bottleneck layer 3.
+        btlu3 (torch.nn.Conv2d): Bottleneck layer 3 (upscaling).
+        fc4 (torch.nn.Linear): Fully connected layer 4.
+        fc5 (torch.nn.Linear): Fully connected layer 5.
+        fc6 (torch.nn.Linear): Fully connected layer 6.
+        deconv1 (torch.nn.ConvTranspose2d): First deconvolutional layer.
+        deconv2 (torch.nn.ConvTranspose2d): Second deconvolutional layer.
+        deconv3 (torch.nn.ConvTranspose2d): Third deconvolutional layer.
+
+    """
 
     def __init__(self,num_classes):
         super().__init__()
@@ -65,6 +101,16 @@ class DHRNet(nn.Module):
         self.deconv3 = nn.ConvTranspose2d(256,128,kernel_size=2,stride=2,padding=0)
     
     def forward(self,x):
+        """
+        Forward pass of the DHRNet model.
+
+        Args:
+            x (torch.Tensor): Input tensor.
+
+        Returns:
+            tuple: A tuple containing the output predictions, the output of the final deconvolutional layer, and a list of intermediate feature maps.
+
+        """
 
         x1 = F.relu(self.bn1_1(self.conv1_1(x)))
         x1 = F.relu(self.bn1_2(self.conv1_2(x1)))
@@ -105,6 +151,19 @@ class DHRNet(nn.Module):
         return x5, g0, [z3, z2, z1] #torch.concat([z3, z2, z1], dim = 0)
     
 def epoch_train(net,device,trainloader,optimizer):
+    """
+    Performs a single epoch of training for the network.
+
+    Args:
+        net (torch.nn.Module): The neural network model.
+        device (torch.device): The device on which the computations should be performed (e.g., 'cuda' for GPU or 'cpu' for CPU).
+        trainloader (torch.utils.data.DataLoader): The training data loader.
+        optimizer (torch.optim.Optimizer): The optimizer for updating the network parameters.
+
+    Returns:
+        list: A list containing the training metrics: [accuracy, classification loss, reconstruction loss, total loss].
+
+    """
         
     net.train() 
     correct=0
@@ -156,6 +215,18 @@ def epoch_train(net,device,trainloader,optimizer):
     return [(100 * (correct / total)), (total_cls_loss/iter), (total_reconst_loss/iter), (total_loss/iter)]
 
 def epoch_val(net,device,testloader):
+    """
+    Performs a single epoch of validation for the network.
+
+    Args:
+        net (torch.nn.Module): The neural network model.
+        device (torch.device): The device on which the computations should be performed (e.g., 'cuda' for GPU or 'cpu' for CPU).
+        testloader (torch.utils.data.DataLoader): The test/validation data loader.
+
+    Returns:
+        list: A list containing the validation metrics: [accuracy, classification loss, reconstruction loss, total loss].
+
+    """
 
     net.eval()
     correct = 0
